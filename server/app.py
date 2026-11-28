@@ -17,6 +17,7 @@ from PIL import Image
 import config
 import db
 import export
+import docs
 import extract
 import imaging
 import mailer
@@ -398,6 +399,12 @@ def create_app(start=True):
         odir = config.DATA_DIR / "trips" / str(b["trip_id"]) / "originals"
         odir.mkdir(parents=True, exist_ok=True)
         ids, errors = [], []
+        pid = int(request.form.get("person_id") or 0)    # chosen by hand (Taxi, CNA): filed under that person
+        if pid and not c.execute("SELECT 1 FROM person WHERE id=?", (pid,)).fetchone():
+            pid = 0
+        upl_owner = ("confirmed", pid, 100) if pid else ("processing", None, None)
+        UPLOAD_SQL = """INSERT INTO receipt(batch_id, status, person_id, match_score, tag, upload_date, original_path, created_at)
+                        VALUES (?,?,?,?,?,?,?,?)"""
         today = datetime.now().strftime("%Y-%m-%d")
         for f in request.files.getlist("files"):
             f.stream.seek(0, 2)
@@ -406,22 +413,41 @@ def create_app(start=True):
             if size > config.MAX_UPLOAD_MB * 1024 * 1024:
                 errors.append(f"{f.filename}: bigger than {config.MAX_UPLOAD_MB} MB. Turn on 'Shrink big photos'.")
                 continue
+            head = f.stream.read(16)
+            f.stream.seek(0)
+            dk = docs.kind(head, f.filename)
+            if dk:                                   # PDF / Word: every page becomes a photo-style PNG
+                tmp = odir / (secrets.token_hex(6) + "." + dk)
+                f.save(tmp)
+                try:
+                    pages = docs.to_pngs(tmp, dk, odir, secrets.token_hex(8) + "-p")
+                except RuntimeError as e:
+                    errors.append(f"{f.filename}: {e}")
+                    pages = []
+                except Exception:
+                    traceback.print_exc()
+                    errors.append(f"{f.filename}: could not open this file.")
+                    pages = []
+                tmp.unlink(missing_ok=True)
+                for pg in pages:
+                    cur = c.execute(UPLOAD_SQL, (bid, *upl_owner, tag, today, str(pg), db.now()))
+                    ids.append(cur.lastrowid)
+                continue
             try:
                 im = Image.open(f.stream)
                 fmt = im.format
                 im.verify()
             except Exception:
-                errors.append(f"{f.filename}: not a photo this app can read. On iPhone set the camera to 'Most Compatible'.")
+                errors.append(f"{f.filename}: not a photo, PDF or Word file this app can read. On iPhone set the camera to 'Most Compatible'.")
                 continue
             if fmt not in config.ALLOWED_FORMATS:
-                errors.append(f"{f.filename}: only JPEG, PNG or HEIC photos are accepted.")
+                errors.append(f"{f.filename}: only photos (JPEG, PNG, HEIC), PDF or Word files are accepted.")
                 continue
             ext = {"JPEG": "jpg", "MPO": "jpg", "PNG": "png"}.get(fmt, "heic")
             path = odir / f"{secrets.token_hex(12)}.{ext}"
             f.stream.seek(0)
             f.save(path)
-            cur = c.execute("""INSERT INTO receipt(batch_id, status, tag, upload_date, original_path, created_at)
-                               VALUES (?,?,?,?,?,?)""", (bid, "processing", tag, today, str(path), db.now()))
+            cur = c.execute(UPLOAD_SQL, (bid, *upl_owner, tag, today, str(path), db.now()))
             ids.append(cur.lastrowid)
         c.commit()
         c.close()
