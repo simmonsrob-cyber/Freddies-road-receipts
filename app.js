@@ -158,12 +158,9 @@ function stayCard(t,b){
   const pill=empty?'<span class="pill warn">No receipts yet</span>':`<span class="pill ${full?"ok":"bad"}">${n} of ${t.members.length}${full?" &#10003;":""}</span>`;
   const have=present(b);
   const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
-  const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));
-  const nm=t.members.filter(id=>!nh.has(id));
-  const nsub=`<div class="nsub"><div class="row sp"><label class="chk" style="min-height:36px"><input type="checkbox" data-nreq="${b.id}" ${b.nonaRequired?"checked":""}> <span>Non Availability required</span></label>${b.nonaRequired?`<span class="pill ${nm.length?"bad":"ok"}">${t.members.length-nm.length} of ${t.members.length}</span>`:""}</div>${b.nonaRequired?`<div class="pchips">${t.members.map(id=>`<span class="pchip ${nh.has(id)?"y":"n"}">${nh.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("")}</div>`:""}</div>`;
   return `<div class="staywrap"><details class="stay ${full?"done":""}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
   <div class="pchips">${people||'<span class="mut">No crew list on this mission.</span>'}</div>
-  <div class="row" style="gap:.5rem"><a class="btn sm pri" href="#/batch/${b.id}">${empty?"Add receipts":"Open this stay"}</a>${empty?`<button class="btn sm danger" data-delstay="${b.id}">Remove</button>`:""}</div></details>${nsub}</div>`;
+  <div class="row" style="gap:.5rem"><a class="btn sm pri" href="#/batch/${b.id}">${empty?"Add receipts":"Open this stay"}</a>${empty?`<button class="btn sm danger" data-delstay="${b.id}">Remove</button>`:""}</div></details></div>`;
 }
 function devFiles(t){
   const bs=t.batches.filter(b=>b.receipts.length);
@@ -205,17 +202,15 @@ function tripPage(t){
   const lv=live(t);
   const CATS=["Taxi","CNA"],OPT=["Taxi"];
   const catSet=g=>new Set(t.batches.flatMap(b=>b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===g).map(r=>r.pid)));
-  const cats=t.members.length?`<div class="cats" id="cats">${CATS.map(g=>{const h=catSet(g),n=t.members.filter(id=>h.has(id)).length,ok=n===t.members.length;const op=OPT.includes(g);return `<button class="cat ${op?"opt":(ok?"ok":"")}" data-cat="${esc(g)}"><span>${esc(TL(g))}${op?" (optional)":""}</span><b>${op?n:n+"/"+t.members.length}</b></button>`}).join("")}</div>`:"";
-  const nona="";
+  const catBox=g=>{const h=catSet(g),n=t.members.filter(id=>h.has(id)).length,op=OPT.includes(g),ok=n===t.members.length&&n>0;return `<button class="catbox" data-cat="${esc(g)}"><span><b>${esc(TL(g))}</b>${op?' <span class="mut">(optional)</span>':""}</span><span class="pill ${op?"":(ok?"ok":"bad")}">${op?n+" filed":n+" of "+t.members.length}</span></button>`};
   const grid=lv.length>1?`<details class="card"><summary><b>Full grid (everyone, every stay)</b></summary><div style="overflow-x:auto;margin-top:.5rem"><table class="mx"><tr><th>Person</th>${lv.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${lv.map(b=>{const m=missing(t,b).includes(x.p.id);return `<td class="${m?"n":"y"}">${m?"MISSING":"&#10003;"}</td>`}).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></details>`:"";
   app.innerHTML=`<div class="card"><div class="row sp"><div><b>${stays.length} stay${stays.length===1?"":"s"}</b> &middot; ${complete} complete</div><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div>
   <div class="mut" style="margin:.2rem 0 .5rem">${st.miss?`<span class="miss">${st.miss} receipt${st.miss===1?"":"s"} still missing</span>`:(stays.length?"Nobody is missing anything":"No stays yet")}${datesTxt(t)?" &middot; "+datesTxt(t):""} &middot; ${t.members.length} people</div>
   <div class="row" style="gap:.5rem;flex-wrap:wrap"><a class="btn sm" href="#/review/${t.id}">Not sure whose ${q?`<span class="pill warn">${q}</span>`:""}</a><a class="btn sm" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">AC Review</a></div></div>
-  ${cats}
   <h2 style="margin:.9rem 0 .4rem">Hotel stays</h2>
   ${stays.map(b=>stayCard(t,b)).join("")||'<div class="card mut">No stays yet. Start one for your first hotel.</div>'}
   <button class="btn pri" id="nb">Add hotel and upload receipts</button>
-  ${nona}
+  ${t.members.length?catBox("Taxi")+catBox("CNA"):""}
   ${grid}
   <details class="card"><summary><b>Mission dates</b></summary><div class="row" style="gap:.6rem;flex-wrap:wrap;align-items:end;margin-top:.5rem"><label class="mut" style="flex:1;min-width:8rem">Start date<br><input type="date" id="sd" value="${esc(t.startDate||"")}" style="width:100%"></label><label class="mut" style="flex:1;min-width:8rem">End date<br><input type="date" id="ed" value="${esc(t.endDate||"")}" style="width:100%"></label></div></details>
   ${t.status==="sent"?'<button class="btn" id="reopen">Reopen mission</button>':""}
@@ -229,8 +224,6 @@ function tripPage(t){
     toast("Mission archived");await refresh();go("#/");
   };
   $("#nb").onclick=()=>stayModal(t);
-  app.querySelectorAll("[data-nreq]").forEach(cb=>cb.onchange=async()=>{const r=await api("/api/batch/"+cb.dataset.nreq+"/nona",{required:cb.checked});if(!r.ok)toast(r.error||"Could not save.");await refresh();tripPage(TRIP(t.id))});
-  const ch=$("#cats");if(ch)ch.style.top=(document.querySelector("header.top").offsetHeight)+"px";
   app.querySelectorAll("[data-cat]").forEach(bt=>bt.onclick=()=>{const g=bt.dataset.cat,h=catSet(g),L=$("#layer");
     L.innerHTML=`<div class="modal"><div class="sheet"><h2>${esc(TL(g))}</h2><div class="mut">Add the receipts here. Green means a receipt is filed.</div><div class="pchips">${t.members.map(id=>`<span class="pchip ${h.has(id)?"y":"n"}">${h.has(id)?"&#10003;":"&#10007;"} ${esc(P(id).name)}</span>`).join("")}</div><button class="btn pri" id="cpk">Add receipts with photo library</button><button class="btn" id="csh">Take photo</button><input type="file" id="cf" accept="image/*" multiple hidden><input type="file" id="cc" accept="image/*" capture="environment" hidden><div id="prog"></div><button class="btn" id="ccl">Close</button></div></div>`;
     $("#ccl").onclick=()=>L.innerHTML="";
@@ -257,8 +250,8 @@ function batchPage(id){
    <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then Hotel.</div>
    <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" id="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
    <div id="prog"></div></div>
-  <div class="card"><h2>Non Availability</h2><label class="chk" style="min-height:40px"><input type="checkbox" id="nreq" ${b.nonaRequired?"checked":""}> <span>Required for this stay (everyone needs one)</span></label>
-   ${b.nonaRequired?(()=>{const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));return `<div class="pchips">${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`})():""}
+  <div class="card"><h2>Non Availability</h2>
+   ${(()=>{const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));const any=b.receipts.some(r=>r.tag===NONA);return any?`<div class="row sp"><span class="mut">Everyone needs one for this stay</span><span class="pill ${t.members.length-nh.size?"bad":"ok"}">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div><div class="pchips">${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`:`<div class="mut">None uploaded, so it is not required for this stay.</div>`})()}
    <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" accept="image/*" multiple hidden></div>
   <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
    <input type="text" id="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" id="dt" value="${esc(b.dateFinal||b.dateGuess)}">
@@ -271,7 +264,6 @@ function batchPage(id){
   $("#pick").onclick=()=>needTag()&&$("#files").click();
   $("#shoot").onclick=()=>needTag()&&$("#cam").click();
   $("#files").onchange=fromInput;$("#cam").onchange=fromInput;
-  $("#nreq").onchange=async e=>{const r=await api("/api/batch/"+b.id+"/nona",{required:e.target.checked});if(!r.ok)toast(r.error||"Could not save.");await refresh();batchPage(id)};
   $("#npick").onclick=()=>$("#nfiles").click();$("#nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA)};
   // drag and drop (computers)
   const dz=$(".drop");
