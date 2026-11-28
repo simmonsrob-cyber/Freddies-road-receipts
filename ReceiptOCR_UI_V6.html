@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Receipt OCR UI V6</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--fg:#14171a;--mut:#667;--line:#dde0e5;--pri:#1a5fd0;--pri-fg:#fff;--ok:#1a7f37;--okbg:#e4f5e8;--warn:#9a6700;--warnbg:#fff3d1;--bad:#c62828;--badbg:#fde7e7}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1114;--card:#1a1d22;--fg:#eceef1;--mut:#9aa3ad;--line:#2d333b;--pri:#4c8dff;--pri-fg:#0b1220;--ok:#3fb950;--okbg:#10301a;--warn:#e3b341;--warnbg:#3a2f0b;--bad:#ff6b6b;--badbg:#3a1414}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.45 system-ui,-apple-system,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:.6rem 1rem;display:flex;align-items:center;gap:.6rem}
+header.top h1{font-size:1.05rem;margin:0;flex:1}
+.badge{font-size:.7rem;border:1px solid var(--line);border-radius:.4rem;padding:0 .35rem;color:var(--mut)}
+main{max-width:34rem;margin:0 auto;padding:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:.8rem;padding:.9rem;margin-bottom:.8rem}
+h2{font-size:1.1rem;margin:.2rem 0 .6rem}
+.btn{display:flex;align-items:center;justify-content:center;gap:.4rem;min-height:48px;padding:.5rem 1rem;border-radius:.7rem;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;font-weight:600;width:100%;cursor:pointer;text-decoration:none;margin:.35rem 0}
+.btn.pri{background:var(--pri);color:var(--pri-fg);border-color:var(--pri)}
+.btn.sm{min-height:44px;width:auto;margin:0}
+.btn.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+.row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.row.sp{justify-content:space-between}
+.mut{color:var(--mut);font-size:.9rem}
+input[type=text],input[type=date]{width:100%;min-height:46px;padding:.5rem .7rem;border-radius:.6rem;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}
+label.chk{display:flex;align-items:center;gap:.7rem;min-height:46px;border-bottom:1px solid var(--line)}
+label.chk:last-child{border:0}
+input[type=checkbox]{width:24px;height:24px}
+.pill{display:inline-block;border-radius:2rem;padding:.1rem .6rem;font-size:.85rem;font-weight:600}
+.pill.ok{background:var(--okbg);color:var(--ok)}.pill.warn{background:var(--warnbg);color:var(--warn)}.pill.bad{background:var(--badbg);color:var(--bad)}
+.counter{position:sticky;top:50px;z-index:4;border-radius:.8rem;padding:.7rem 1rem;margin-bottom:.8rem;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.counter.ok{background:var(--okbg);color:var(--ok)}.counter.warn{background:var(--warnbg);color:var(--warn)}
+.counter .big{font-size:1.4rem}
+.miss{color:var(--bad);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.thumb{position:relative;border:1px solid var(--line);border-radius:.5rem;overflow:hidden;background:#fff;aspect-ratio:3/4;padding:0;cursor:pointer}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .tag{position:absolute;left:2px;bottom:2px;right:2px;font-size:.62rem;font-weight:700;background:rgba(255,243,209,.95);color:#7a5200;border-radius:.3rem;padding:0 .2rem;text-align:center}
+.who{font-weight:700;margin:.8rem 0 .3rem}
+.prog{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:.3rem}
+.prog>i{display:block;height:100%;background:var(--pri);width:0;transition:width .3s}
+.q{display:flex;gap:.7rem}.q img{width:84px;border-radius:.4rem;border:1px solid var(--line);align-self:flex-start}
+.q .ocr{font:.75rem/1.3 ui-monospace,monospace;color:var(--mut);max-height:4.4em;overflow:hidden}
+.candbtns{display:flex;flex-direction:column;gap:.35rem;margin-top:.5rem}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--card);width:100%;max-width:34rem;border-radius:1rem 1rem 0 0;padding:1rem;max-height:92vh;overflow:auto}
+.cropbox{position:relative;width:100%;touch-action:none;user-select:none}
+.cropbox img{width:100%;display:block;border-radius:.4rem}
+.cropbox svg{position:absolute;inset:0;width:100%;height:100%}
+.handle{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(76,141,255,.35);border:3px solid #4c8dff;touch-action:none}
+pre.tree{background:var(--bg);padding:.7rem;border-radius:.6rem;overflow:auto;font-size:.85rem;margin:.4rem 0}
+.toast{position:fixed;left:50%;bottom:1.2rem;transform:translateX(-50%);background:#222;color:#fff;padding:.6rem 1rem;border-radius:2rem;z-index:30;font-size:.95rem;max-width:90vw}
+a.lnk{color:var(--pri);text-decoration:none;font-weight:600}
+.drop{border:2px dashed var(--line);border-radius:1rem;padding:1rem;text-align:center;margin-bottom:.8rem;background:var(--card)}
+.drop .step{color:var(--mut);font-size:1.05rem;margin:.5rem 0}
+.drop .step b{color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin:.5rem 0}
+.chip{min-height:46px;padding:.3rem 1.1rem;border-radius:2rem;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-weight:700;cursor:pointer}
+.chip.sel{background:var(--pri);color:var(--pri-fg);border-color:var(--pri)}
+.cap{font-size:.62rem;line-height:1.15;word-break:break-all;color:var(--mut);margin-top:2px;text-align:center}
+.mx{border-collapse:collapse;width:100%;font-size:.85rem}
+.mx th,.mx td{padding:.35rem .4rem;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+.mx th:first-child,.mx td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
+.mx th{font-weight:600;color:var(--mut);font-size:.72rem;white-space:normal;line-height:1.1}
+.mx .y{color:var(--ok);font-weight:700}.mx .n{color:var(--bad);font-weight:700}.mx .z{color:var(--mut)}
+.mcard{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:.8rem;padding:.8rem;margin-bottom:.6rem}
+.mcard b{font-size:1.05rem}
+.demo{background:var(--warnbg);color:var(--warn);font-size:.8rem;text-align:center;padding:.25rem}
+</style>
+</head>
+<body>
+<header class="top"><button class="btn sm" id="back" style="display:none" aria-label="Back">&larr;</button><h1 id="title">Receipts</h1><span class="badge">UI V6</span></header>
+<main id="app"></main>
+<div id="layer"></div>
+
+<script>
+"use strict";
+// ---------- helpers ----------
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let uid=100; const nid=()=>++uid;
+function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2200)}
+function fakeReceipt(name,hotel,warp){
+  const lines=[...Array(9)].map((_,i)=>`<rect x="30" y="${150+i*22}" width="${120+((i*37)%90)}" height="7" fill="#999"/><rect x="230" y="${150+i*22}" width="40" height="7" fill="#999"/>`).join("");
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="${warp?'#cfd3d8':'#fff'}"/><g transform="${warp?'rotate(-4 150 200) translate(14 10) scale(.92)':''}"><rect width="300" height="400" fill="#fff" stroke="#bbb"/><text x="150" y="45" font-family="Georgia" font-size="22" font-weight="700" text-anchor="middle">${esc(hotel)}</text><text x="150" y="70" font-family="monospace" font-size="11" text-anchor="middle" fill="#555">GUEST FOLIO</text><text x="30" y="110" font-family="monospace" font-size="13">GUEST: ${esc(name.toUpperCase())}</text><text x="30" y="130" font-family="monospace" font-size="12" fill="#555">DEPART: 03/05/2026</text>${lines}<text x="30" y="380" font-family="monospace" font-size="13" font-weight="700">BALANCE   $0.00</text></g></svg>`;
+  return "data:image/svg+xml;utf8,"+encodeURIComponent(svg);
+}
+
+// ---------- sample data ----------
+const roster=[];
+const P=id=>roster.find(p=>p.id===id);
+const last=p=>p.name.split(" ").slice(-1)[0];
+function mkR(pid,hotel,status="matched",extra={}){return {id:nid(),pid,status,hotel,tag:"Hotel",date:"2026-03-03",img:fakeReceipt(P(pid||1).name,hotel),score:96,inferred:false,cands:[],text:"",...extra}}
+const trips=[];
+let curTrip=null;
+const tags=["Hotel","NONA","Taxi","CNA"];let selTag=null,shrinkOn=true;
+const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const kb=n=>n>=1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
+// file name: LastName_Date_Tag(_n).pdf
+function fname(t,r){
+  const who=r.pid?last(P(r.pid)):"Unsorted";
+  const same=t.batches.flatMap(b=>b.receipts).filter(x=>x.pid===r.pid&&x.tag===r.tag&&x.date===r.date&&x.status!=="needs_review"||x===r);
+  const n=same.indexOf(r)+1;
+  return `${who}_${r.date}_${r.tag}${n>1?"_"+n:""}.pdf`;
+}
+async function shrinkImage(url){
+  const im=new Image();await new Promise((ok,no)=>{im.onload=ok;im.onerror=no;im.src=url});
+  const sc=Math.min(1,1600/Math.max(im.width,im.height));
+  const c=document.createElement("canvas");c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);
+  const x=c.getContext("2d");x.drawImage(im,0,0,c.width,c.height);
+  const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",.7));
+  return {url:URL.createObjectURL(blob),size:blob.size};
+}
+
+// ---------- logic ----------
+const members=t=>t.members.map(P);
+const present=b=>new Set(b.receipts.filter(r=>r.tag==="Hotel"&&r.status!=="needs_review"&&r.pid).map(r=>r.pid));
+const missing=(t,b)=>t.members.filter(id=>!present(b).has(id));
+const queue=t=>t.batches.flatMap(b=>b.receipts.filter(r=>r.status==="needs_review").map(r=>({r,b})));
+const hotel=b=>b.hotelFinal||b.hotelGuess||b.label;
+const dateTxt=b=>{const d=b.dateFinal||b.dateGuess;if(!d)return"";return new Date(d+"T12:00").toLocaleDateString(undefined,{month:"short",day:"numeric"})};
+const bLabel=b=>hotel(b)+(dateTxt(b)?` (${dateTxt(b)})`:"");
+function report(t){
+  const out=t.members.map(id=>({p:P(id),miss:t.batches.filter(b=>b.receipts.length&&missing(t,b).includes(id))})).sort((a,b)=>b.miss.length-a.miss.length);
+  return out;
+}
+
+// ---------- router ----------
+const app=$("#app"),titleEl=$("#title"),backBtn=$("#back");
+let backTo=null;
+function go(h){location.hash=h}
+backBtn.onclick=()=>backTo&&go(backTo);
+window.addEventListener("hashchange",render);
+function setHead(title,back){titleEl.textContent=title;backTo=back;backBtn.style.display=back?"":"none"}
+function render(){
+  const [,page,id]=(location.hash||"#/").split("/");
+  const t=trips.find(x=>x.id==id);
+  ({"":home,roster:rosterPage,newtrip:newTrip,trip:()=>tripPage(t),batch:()=>batchPage(id),review:()=>reviewPage(t),ac:()=>acPage(t)}[page||""]||home)();
+  window.scrollTo(0,0);
+}
+
+// ---------- pages ----------
+function stats(t){
+  let miss=0,bats=0;t.batches.forEach(b=>{if(b.receipts.length){bats++;miss+=missing(t,b).length}});
+  return {miss,bats,q:queue(t).length};
+}
+function mcard(t){
+  const st=stats(t);
+  const pill=!st.bats?'<span class="pill warn">No receipts yet</span>':st.miss?`<span class="pill bad">${st.miss} missing</span>`:'<span class="pill ok">Complete</span>';
+  return `<a class="mcard" href="#/trip/${t.id}"><div class="row sp"><b>${esc(t.name)}</b>${pill}</div>
+  <div class="mut">${t.members.length} people &middot; ${t.batches.length} hotel batch${t.batches.length===1?"":"es"}${st.q?` &middot; <span style="color:var(--warn);font-weight:700">${st.q} to review</span>`:""}</div></a>`;
+}
+function home(){
+  setHead("Receipts",null);
+  const open=trips.filter(t=>t.status!=="sent"),done=trips.filter(t=>t.status==="sent");
+  app.innerHTML=`<div class="mut" style="margin:0 0 .5rem">Open missions. Saved on this device only for now.</div>
+  ${open.map(mcard).join("")||'<div class="card mut">No open missions. Start one below.</div>'}
+  <a class="btn pri" href="#/newtrip">+ Start a new mission</a>
+  ${done.length?`<h2 style="margin-top:1.4rem">Sent</h2>${done.map(mcard).join("")}`:""}
+  <a class="btn" href="#/roster" style="margin-top:1rem">People (roster)</a>`;
+}
+function rosterPage(){
+  setHead("People","#/");
+  const draw=()=>{app.innerHTML=`<div class="card"><h2>Roster</h2>${roster.map(p=>`<div class="row sp" style="min-height:48px;border-bottom:1px solid var(--line)"><div><b>${esc(p.name)}</b>${p.aliases?`<div class="mut">also: ${esc(p.aliases)}</div>`:""}</div><button class="btn sm" data-t="${p.id}">${p.active?"Active":"Off"}</button></div>`).join("")}</div>
+  <div class="card"><h2>Add a person</h2><input type="text" id="nn" placeholder="Full name"><div style="height:.5rem"></div><input type="text" id="na" placeholder="Other spellings on receipts (optional)"><button class="btn pri" id="add">Add person</button></div>`;
+  app.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{const p=P(+b.dataset.t);p.active=!p.active;draw()});
+  $("#add").onclick=()=>{const n=$("#nn").value.trim();if(!n)return toast("Type a name first");roster.push({id:nid(),name:n,aliases:$("#na").value.trim(),active:true});draw();toast("Added "+n)}};
+  draw();
+}
+function newTrip(){
+  setHead("New mission","#/");
+  app.innerHTML=`<div class="card"><h2>Mission name</h2><input type="text" id="tn" placeholder="e.g. Pacific Mission, Apr 2026"></div>
+  <div class="card"><h2>Who is on this mission? (optional)</h2><div class="mut" style="margin-bottom:.4rem">Leave this blank. People are added automatically as their receipts are read.</div>${roster.filter(p=>p.active).length?"":'<div class="mut"></div>'}${roster.filter(p=>p.active).map(p=>`<label class="chk"><input type="checkbox" value="${p.id}"> ${esc(p.name)}</label>`).join("")}</div>
+  <button class="btn pri" id="go">Start mission</button>`;
+  $("#go").onclick=()=>{const n=$("#tn").value.trim();const m=[...app.querySelectorAll("input[type=checkbox]:checked")].map(c=>+c.value);
+    if(!n)return toast("Give the mission a name");
+    const t={id:nid(),name:n,status:"open",members:m,batches:[]};trips.push(t);go("#/trip/"+t.id)};
+}
+function tripPage(t){
+  setHead(t.name,"#/");
+  const q=queue(t).length;
+  const live=t.batches.filter(b=>b.receipts.length);
+  const grid=live.length?`<div class="card"><h2>What is in and what is missing</h2><div style="overflow-x:auto"><table class="mx"><tr><th>Person</th>${live.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${live.map(b=>`<td class="${missing(t,b).includes(x.p.id)?"n":"y"}">${missing(t,b).includes(x.p.id)?"MISSING":"&#10003;"}</td>`).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></div>`:"";
+  app.innerHTML=`<div class="card"><div class="row sp"><span class="mut">${t.members.length} people on this mission</span><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div></div>${grid}
+  ${t.batches.map(b=>{const m=missing(t,b),n=t.members.length-m.length,full=!m.length;return `<a class="btn" href="#/batch/${b.id}" style="justify-content:space-between"><span>${esc(b.label)}: ${esc(hotel(b))}</span><span class="pill ${full?'ok':'bad'}">${n} of ${t.members.length}</span></a>`}).join("")||`<div class="card mut">No batches yet. Start one for your first hotel.</div>`}
+  <button class="btn pri" id="nb">+ New batch</button>
+  <a class="btn" href="#/review/${t.id}">Not sure whose these are ${q?`<span class="pill warn">${q}</span>`:""}</a>
+  <div style="height:1.5rem"></div>
+  <a class="btn pri" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">Aircraft Commander Review</a>${t.status==="sent"?'<button class="btn" id="reopen">Reopen mission</button>':""}`;
+  const ro=$("#reopen");if(ro)ro.onclick=()=>{t.status="open";tripPage(t);toast("Mission reopened")};
+  $("#nb").onclick=()=>{const seq=t.batches.length+1;const b={id:nid(),label:"Batch "+seq,hotelGuess:"",hotelFinal:"",dateGuess:"",dateFinal:"",receipts:[]};t.batches.push(b);go("#/batch/"+b.id)};
+}
+function findBatch(id){for(const t of trips){const b=t.batches.find(x=>x.id==id);if(b)return{t,b}}return{}}
+function batchPage(id){
+  const {t,b}=findBatch(id);if(!b)return home();curTrip=t;
+  setHead(b.label,"#/trip/"+t.id);
+  const m=missing(t,b),n=t.members.length-m.length,aw=b.receipts.filter(r=>r.status==="needs_review").length;
+  const byP={};b.receipts.filter(r=>r.pid&&r.status!=="needs_review").forEach(r=>(byP[r.pid]??=[]).push(r));
+  app.innerHTML=`<div class="counter ${m.length?'warn':'ok'}"><span><span class="big">${n} of ${t.members.length}</span> hotel receipts</span>${aw?`<a class="lnk" href="#/review/${t.id}">${aw} to review</a>`:""}</div>
+  ${m.length&&b.receipts.length?`<div class="card"><b class="miss">Missing:</b> ${m.map(i=>`<span class="miss">${esc(P(i).name)}</span>`).join(", ")}</div>`:""}
+  <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first receipt is read."}</div>
+   <input type="text" id="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" id="dt" value="${esc(b.dateFinal||b.dateGuess)}">
+   <button class="btn" id="sv">Save</button></div>
+  <div class="drop">
+   <div class="step"><b>1.</b> Pick a tag</div>
+   <div class="chips" id="chips">${tags.map(g=>`<button class="chip ${g===selTag?"sel":""}" data-g="${esc(g)}">${esc(g)}</button>`).join("")}<button class="chip" id="newtag">+ New</button></div>
+   <div id="newrow" style="display:none" class="row"><input type="text" id="ntn" placeholder="New tag name" style="flex:1"><button class="btn sm pri" id="ntok">Add</button></div>
+   <div class="step"><b>2.</b> Add receipts</div>
+   <input type="file" id="files" accept="image/*" multiple hidden>
+   <input type="file" id="cam" accept="image/*" capture="environment" hidden>
+   <button class="btn pri" id="pick">Add receipts with photo library</button>
+   <button class="btn" id="shoot">Take photo</button>
+   <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then the tag.</div>
+   <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" id="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
+   <div id="prog"></div></div>
+  ${Object.keys(byP).length?`<div class="card"><h2>Filed receipts</h2>${t.members.filter(i=>byP[i]).map(i=>`<div class="who">${esc(P(i).name)}</div><div class="grid">${byP[i].map(r=>`<div><button class="thumb" data-r="${r.id}" style="width:100%"><img src="${r.img}" alt="">${r.inferred?'<span class="tag">guessed by elimination</span>':""}</button><div class="cap">${esc(fname(t,r))}</div></div>`).join("")}</div>`).join("")}</div>`:""}`;
+  $("#sv").onclick=()=>{b.hotelFinal=$("#hn").value.trim();b.dateFinal=$("#dt").value;toast("Saved");batchPage(id)};
+  const needTag=()=>{if(!selTag){toast("Pick a tag first (step 1)");return false}return true};
+  app.querySelectorAll("[data-g]").forEach(c=>c.onclick=()=>{selTag=c.dataset.g;batchPage(id)});
+  $("#newtag").onclick=()=>{$("#newrow").style.display="flex";$("#ntn").focus()};
+  $("#ntok").onclick=()=>{const v=$("#ntn").value.trim().replace(/[^\w-]/g,"");if(!v)return toast("Type a tag name");if(!tags.includes(v))tags.push(v);selTag=v;batchPage(id)};
+  $("#shr").onchange=e=>shrinkOn=e.target.checked;
+  const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)runUpload(t,b,fs.map(f=>({file:f,name:f.name})),selTag)};
+  $("#pick").onclick=()=>needTag()&&$("#files").click();
+  $("#shoot").onclick=()=>needTag()&&$("#cam").click();
+  $("#files").onchange=fromInput;$("#cam").onchange=fromInput;
+  app.querySelectorAll("button.thumb").forEach(el=>el.onclick=()=>receiptModal(t,b,b.receipts.find(r=>r.id==el.dataset.r)));
+}
+var OCRCB=null,_tess=null,_worker=null;
+const ACCEPT=85,TIE=8,SINGLE=5;
+const FIXD={"0":"O","1":"I","2":"Z","3":"E","4":"A","5":"S","6":"G","8":"B"};
+function loadTess(){
+  if(_tess)return _tess;
+  _tess=new Promise(function(ok,no){
+    if(window.Tesseract)return ok();
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload=ok;
+    s.onerror=function(){_tess=null;no(new Error("Could not load the text reader. Check your internet."))};
+    document.head.appendChild(s);
+  });
+  return _tess;
+}
+async function getWorker(){
+  await loadTess();
+  if(!_worker){
+    _worker=await Tesseract.createWorker("eng",1,{logger:function(m){if(m.status==="recognizing text"&&OCRCB)OCRCB(Math.round(m.progress*100))}});
+  }
+  return _worker;
+}
+async function prep(file){
+  const url=URL.createObjectURL(file);
+  const im=new Image();
+  await new Promise(function(ok,no){im.onload=ok;im.onerror=function(){no(new Error("Could not open that photo"))};im.src=url});
+  const edge=shrinkOn?1600:2400;
+  const sc=Math.min(1,edge/Math.max(im.width,im.height));
+  const c=document.createElement("canvas");
+  c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);
+  const x=c.getContext("2d");
+  x.filter="grayscale(1) contrast(1.35)";
+  x.drawImage(im,0,0,c.width,c.height);
+  const th=document.createElement("canvas");
+  const ts=Math.min(1,640/Math.max(c.width,c.height));
+  th.width=Math.round(c.width*ts);th.height=Math.round(c.height*ts);
+  th.getContext("2d").drawImage(c,0,0,th.width,th.height);
+  URL.revokeObjectURL(url);
+  return {canvas:c,thumb:th.toDataURL("image/jpeg",0.6)};
+}
+function lev(a,b){
+  const m=a.length,n=b.length;
+  if(!m)return n;if(!n)return m;
+  let p=[];for(let j=0;j<=n;j++)p[j]=j;
+  for(let i=1;i<=m;i++){
+    const c=[i];
+    for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));
+    p=c;
+  }
+  return p[n];
+}
+function sim(a,b){return 100*(1-lev(a,b)/Math.max(a.length,b.length))}
+function normName(s){return String(s||"").toUpperCase().replace(/[^A-Z'\- ]/g," ").replace(/\s+/g," ").trim()}
+function fixTok(tok){return (/[A-Z]/.test(tok)&&/[0-9]/.test(tok))?tok.replace(/[0-9]/g,function(d){return FIXD[d]||d}):tok}
+function cleanLines(text){
+  return String(text).toUpperCase().split(/\r?\n/).map(function(l){
+    return l.split(/[\s,\/;:.()]+/).map(function(tok){return fixTok(tok).replace(/[^A-Z'\-]/g,"")}).filter(function(x){return x.length>0});
+  }).filter(function(a){return a.length>0});
+}
+function forms(p){
+  const parts=normName(p.name).split(" ").filter(Boolean),f=[];
+  if(parts.length>1){const fi=parts[0],la=parts[parts.length-1];f.push(la+" "+fi);f.push(fi+" "+la);f.push(la+" "+fi[0]);f.push(la)}
+  else if(parts.length===1)f.push(parts[0]);
+  String(p.aliases||"").split(",").forEach(function(a){a=normName(a);if(a)f.push(a)});
+  return f;
+}
+function scorePerson(p,lines){
+  let best=0;
+  forms(p).forEach(function(f){
+    const n=f.split(" ").length;
+    lines.forEach(function(tk){
+      for(let i=0;i+n<=tk.length;i++){
+        const w=tk.slice(i,i+n).join(" ");
+        if(n===1&&(w.length<3||f.length<3))continue;
+        let s=sim(f,w);if(n===1)s-=SINGLE;
+        if(s>best)best=s;
+      }
+    });
+  });
+  return best;
+}
+function titleCase(s){return s.toLowerCase().replace(/\b[a-z]/g,function(c){return c.toUpperCase()})}
+const BADW=/\b(ROOM|DATE|ARRIVE|ARRIVAL|DEPART|DEPARTURE|FOLIO|INN|HOTEL|SUITES|TOTAL|BALANCE|AMOUNT|TAX|NIGHT|RATE|PAGE|NUMBER|VISA|MASTERCARD|AMEX|CARD|ACCOUNT|ADDRESS|PHONE|CONFIRMATION)\b/;
+function tidyName(raw){
+  let s=String(raw||"").toUpperCase().split(/\s+/).map(fixTok).join(" ");
+  s=s.replace(/[^A-Z'\-, ]/g," ").replace(/\s+/g," ").trim();
+  if(s.length<4||s.length>40||BADW.test(s))return "";
+  let parts;
+  if(s.indexOf(",")>=0){
+    const q=s.split(",").map(function(x){return x.trim()}).filter(Boolean);
+    parts=(q.slice(1).join(" ")+" "+q[0]).trim().split(" ");
+  }else parts=s.split(" ");
+  parts=parts.filter(function(x){return x.length>0});
+  if(parts.length<2||parts.length>4)return "";
+  return titleCase(parts.join(" "));
+}
+function extractNames(text){
+  const lines=String(text).split(/\r?\n/).map(function(l){return l.trim()}).filter(Boolean);
+  const out=[];
+  const add=function(n){if(n&&out.indexOf(n)<0)out.push(n)};
+  const re=/\b(?:GUEST\s*NAME|GUEST|NAME|BILL\s*TO|CARD\s*HOLDER|CARDHOLDER)\b\s*[:#\-]?\s*(.*)$/i;
+  lines.forEach(function(l,i){
+    const m=l.match(re);if(!m)return;
+    let c=tidyName(m[1]);
+    if(!c&&!m[1].trim()&&lines[i+1])c=tidyName(lines[i+1]);
+    add(c);
+  });
+  return out.slice(0,3);
+}
+function matchText(t,b,text,tag){
+  const lines=cleanLines(text);
+  const sugg=extractNames(text);
+  const sc=t.members.map(function(id){return {id:id,s:scorePerson(P(id),lines)}}).sort(function(x,y){return y.s-x.s});
+  const top=sc[0],sec=sc[1]||{s:0};
+  if(top&&top.s>=ACCEPT&&top.s-sec.s>=TIE)return {pid:top.id,status:"matched",inferred:false,score:Math.round(top.s),cands:[],sugg:sugg};
+  const miss=missing(t,b);
+  if(tag==="Hotel"&&miss.length===1&&top&&top.id===miss[0]&&top.s>=60)return {pid:top.id,status:"matched",inferred:true,score:Math.round(top.s),cands:[],sugg:sugg};
+  const cands=sc.filter(function(x){return x.s>=50}).slice(0,3).map(function(x){return x.id});
+  return {pid:null,status:"needs_review",inferred:false,score:Math.round(top?top.s:0),cands:cands,sugg:sugg};
+}
+function guessMeta(text){
+  const lines=String(text).split(/\r?\n/).map(function(l){return l.trim()});
+  const hl=lines.find(function(l){return l.length>3&&l.length<50&&/\b(INN|HOTEL|SUITES|HILTON|MARRIOTT|HAMPTON|COURTYARD|RESIDENCE|HYATT|SHERATON|WESTIN|MOTEL|LODGE|RESORT|HOLIDAY|EMBASSY)\b/i.test(l)});
+  let date="";
+  const ds=String(text).match(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g);
+  if(ds){
+    for(let i=ds.length-1;i>=0&&!date;i--){
+      const q=ds[i].split(/[\/\-.]/).map(Number);
+      let y=q[2];if(y<100)y+=2000;
+      if(q[0]>=1&&q[0]<=12&&q[1]>=1&&q[1]<=31&&y>=2000&&y<=2100)date=y+"-"+String(q[0]).padStart(2,"0")+"-"+String(q[1]).padStart(2,"0");
+    }
+  }
+  return {hotel:hl?hl.replace(/\s+/g," "):"",date:date};
+}
+function personByName(n){const k=normName(n);return roster.find(function(p){return normName(p.name)===k})}
+function assignId(t,r,id){
+  if(t.members.indexOf(id)<0)t.members.push(id);
+  r.pid=id;r.status="confirmed";save();
+}
+function assignName(t,r,name){
+  name=String(name||"").trim();if(!name)return false;
+  let p=personByName(name);
+  if(!p){p={id:nid(),name:name,aliases:"",active:true};roster.push(p)}
+  assignId(t,r,p.id);return true;
+}
+async function runUpload(t,b,files,tag){
+  if(!files.length)return;
+  const box=$("#prog");
+  box.innerHTML=files.map(function(f,i){return '<div style="margin-top:.6rem"><div class="row sp"><span>'+esc(f.name)+'</span><span class="mut" id="st'+i+'">Waiting</span></div><div class="prog"><i id="pb'+i+'"></i></div></div>'}).join("");
+  for(let i=0;i<files.length;i++){
+    const set=function(s,p){const a=$("#st"+i),c=$("#pb"+i);if(a)a.textContent=s;if(c)c.style.width=p+"%"};
+    try{
+      set("Preparing…",8);
+      const pr=await prep(files[i].file);
+      set("Loading reader (first time is slow)…",15);
+      OCRCB=function(p){set("Reading "+p+"%",20+p*0.7)};
+      const w=await getWorker();
+      const res=await w.recognize(pr.canvas);
+      const text=(res.data&&res.data.text)||"";
+      set("Matching…",95);
+      const m=matchText(t,b,text,tag);
+      const meta=guessMeta(text);
+      const hn=b.hotelFinal||b.hotelGuess||meta.hotel||"";
+      b.receipts.push({id:nid(),pid:m.pid,status:m.status,inferred:m.inferred,score:m.score,cands:m.cands,sugg:m.sugg,hotel:hn,tag:tag,date:todayISO(),img:pr.thumb,text:text});
+      if(!b.hotelGuess&&meta.hotel)b.hotelGuess=meta.hotel;
+      if(!b.dateGuess&&meta.date)b.dateGuess=meta.date;
+      set(m.status==="matched"?"Filed under "+P(m.pid).name+(m.inferred?" (guessed)":""):(m.sugg.length||m.cands.length?"Not sure. Tap a suggested name.":"Could not read a name. Type it in."),100);
+      save();
+    }catch(e){
+      set("Failed: "+(e&&e.message?e.message:e),0);
+    }
+  }
+  await sleep(1500);batchPage(b.id);toast("Done");
+}
+function dlist(id){return '<datalist id="'+id+'">'+roster.map(function(p){return '<option value="'+esc(p.name)+'">'}).join("")+'</datalist>'}
+function reviewPage(t){
+  setHead("Not sure whose these are","#/trip/"+t.id);
+  const items=queue(t);
+  if(!items.length){app.innerHTML='<div class="card"><span class="pill ok">All clear</span> Nothing waiting for review.</div>';return}
+  app.innerHTML=items.map(function(it){
+    const r=it.r,b=it.b;
+    const have=r.cands.map(function(c){return P(c).name});
+    const names=(r.sugg||[]).filter(function(n){return have.indexOf(n)<0});
+    return '<div class="card"><div class="mut">'+esc(b.label)+': '+esc(hotel(b))+' &middot; tag: <b>'+esc(r.tag)+'</b></div>'
+    +'<div class="q"><img src="'+r.img+'" alt=""><div><div class="ocr">'+esc(String(r.text||"").trim().slice(0,300))+'</div>'
+    +'<div class="mut" style="margin-top:.3rem">'+((r.cands.length||names.length)?"The reader suggests:":"Type who this is:")+'</div></div></div>'
+    +'<div class="candbtns">'
+    +r.cands.map(function(c){return '<button class="btn" data-r="'+r.id+'" data-p="'+c+'">'+esc(P(c).name)+'</button>'}).join("")
+    +names.map(function(n){return '<button class="btn" data-r="'+r.id+'" data-n="'+esc(n)+'">'+esc(n)+' (new)</button>'}).join("")
+    +'<div class="row"><input type="text" list="dl" placeholder="Type a name" data-in="'+r.id+'" style="flex:1"><button class="btn sm pri" data-go="'+r.id+'">Add</button></div>'
+    +'</div></div>';
+  }).join("")+dlist("dl");
+  const find=function(id){return items.find(function(x){return x.r.id==id}).r};
+  const done=function(n){toast("Filed under "+n);reviewPage(t)};
+  app.querySelectorAll("[data-p]").forEach(function(bt){bt.onclick=function(){assignId(t,find(bt.dataset.r),+bt.dataset.p);done(P(+bt.dataset.p).name)}});
+  app.querySelectorAll("[data-n]").forEach(function(bt){bt.onclick=function(){assignName(t,find(bt.dataset.r),bt.dataset.n);done(bt.dataset.n)}});
+  app.querySelectorAll("[data-go]").forEach(function(bt){bt.onclick=function(){
+    const inp=app.querySelector('[data-in="'+bt.dataset.go+'"]');
+    if(!inp.value.trim())return toast("Type a name first");
+    assignName(t,find(bt.dataset.go),inp.value);done(inp.value.trim());
+  }});
+}
+function receiptModal(t,b,r){
+  const L=$("#layer");
+  L.innerHTML='<div class="modal"><div class="sheet"><h2>'+esc(r.pid?P(r.pid).name:"Unassigned")+' &middot; '+esc(r.tag)+'</h2>'
+  +'<img src="'+r.img+'" style="width:100%;border-radius:.4rem" alt="">'
+  +'<div class="mut" style="margin:.5rem 0 .2rem">Filed under (type to change):</div>'
+  +'<input type="text" id="rp" list="dl2" value="'+esc(r.pid?P(r.pid).name:"")+'">'+dlist("dl2")
+  +'<details style="margin:.5rem 0"><summary class="mut">What the reader saw</summary><pre class="tree" style="white-space:pre-wrap">'+esc(r.text||"")+'</pre></details>'
+  +'<button class="btn pri" id="rs">Save</button><button class="btn danger" id="rd">Delete receipt</button><button class="btn" id="rc">Close</button></div></div>';
+  $("#rc").onclick=function(){L.innerHTML=""};
+  $("#rs").onclick=function(){if(!assignName(t,r,$("#rp").value))return toast("Type a name");L.innerHTML="";batchPage(b.id);toast("Saved")};
+  $("#rd").onclick=function(){if(!confirm("Delete this receipt?"))return;b.receipts=b.receipts.filter(function(x){return x!==r});L.innerHTML="";save();batchPage(b.id)};
+}
+function acPage(t){
+  setHead("Aircraft Commander Review","#/trip/"+t.id);
+  const rep=report(t),bad=rep.filter(x=>x.miss.length),ok=rep.filter(x=>!x.miss.length),q=queue(t).length;
+  app.innerHTML=`${q?`<div class="card" style="background:var(--warnbg)"><b>${q} receipt${q>1?"s":""} still not sure whose.</b> <a class="lnk" href="#/review/${t.id}">Review them first</a></div>`:""}
+  <div class="card"><h2>Missing receipts</h2>${bad.length?bad.map(x=>`<p class="miss" style="margin:.4rem 0">${esc(last(x.p))} is missing receipts at ${x.miss.map(b=>esc(bLabel(b))).join(" and ")}.</p>`).join(""):`<span class="pill ok">Nobody is missing anything</span>`}</div>
+  <div class="card"><h2>Complete</h2>${ok.map(x=>`<span class="pill ok" style="margin:.15rem">${esc(x.p.name)}</span>`).join(" ")||'<span class="mut">No one yet</span>'}</div>
+  <a class="btn" href="#/trip/${t.id}">Back to mission</a><button class="btn pri" id="send">Build and send</button><div id="out"></div>`;
+  $("#send").onclick=async()=>{
+    if(bad.length&&!confirm(bad.length+" "+(bad.length>1?"people are":"person is")+" missing receipts. Send anyway?"))return;
+    const out=$("#out");out.innerHTML=`<div class="card"><div id="bs">Building PDFs…</div><div class="prog"><i id="bp"></i></div></div>`;
+    for(const [s,p] of [["Building PDFs…",30],["Writing SUMMARY.pdf…",55],["Zipping…",80],["Emailing the aircraft commander…",95]]){$("#bs").textContent=s;$("#bp").style.width=p+"%";await sleep(700)}
+    const n=t.batches.reduce((a,b)=>a+b.receipts.filter(r=>r.status!=="needs_review").length,0),mb=(n*0.18).toFixed(1);
+    t.status="sent";
+    out.innerHTML=`<div class="card"><span class="pill ok">Sent</span><p>${n} receipts, zip is <b>${mb} MB</b>. ${mb<19?"Attached to the email, with a Tailscale link too.":"Too big to attach, so the email has a link only."}</p>
+    <pre class="tree">${esc(t.name.replace(/[^\w]+/g,"_"))}_Receipts.zip\n  SUMMARY.pdf\n${t.members.map(id=>`  ${esc(last(P(id)))}_${esc(P(id).name.split(" ")[0])}/ (${t.batches.reduce((a,b)=>a+b.receipts.filter(r=>r.pid===id&&r.status!=="needs_review").length,0)} PDFs)`).join("\n")}${q?"\n  UNSORTED/ ("+q+")":""}</pre>
+    <div class="mut">Files inside are named like <b>${esc(last(P(t.members[0])))}_${todayISO()}_Hotel.pdf</b></div><div class="mut">Link: http://acars-pi2.tail5b21f4.ts.net:8081/download/&lt;random-token&gt;.zip</div><button class="btn" id="re">Send again</button></div>`;
+    $("#re").onclick=()=>toast("Would re-send the same zip");
+  };
+}
+// manual crop modal
+function cropModal(b,r){
+  const L=$("#layer");L.innerHTML=`<div class="modal"><div class="sheet"><h2>Fix the crop</h2><div class="mut">Drag the four corners to the edges of the paper.</div>
+  <div class="cropbox" id="cb"><img src="${r.img}" alt=""><svg><polygon id="pg" fill="rgba(76,141,255,.15)" stroke="#4c8dff" stroke-width="3"/></svg></div>
+  <button class="btn pri" id="ap">Re-scan with this crop</button><button class="btn" id="cl">Close</button></div></div>`;
+  const cb=$("#cb"),img=$("img",cb);let pts=[[.1,.1],[.9,.1],[.9,.9],[.1,.9]],hs=[];
+  const draw=()=>{const w=cb.clientWidth,h=cb.clientHeight;$("#pg").setAttribute("points",pts.map(p=>p[0]*w+","+p[1]*h).join(" "));hs.forEach((e,i)=>{e.style.left=pts[i][0]*w+"px";e.style.top=pts[i][1]*h+"px"})};
+  pts.forEach((p,i)=>{const e=document.createElement("div");e.className="handle";cb.appendChild(e);hs.push(e);
+    e.onpointerdown=ev=>{e.setPointerCapture(ev.pointerId);e.onpointermove=m=>{const R=cb.getBoundingClientRect();pts[i]=[Math.min(1,Math.max(0,(m.clientX-R.left)/R.width)),Math.min(1,Math.max(0,(m.clientY-R.top)/R.height))];draw()};e.onpointerup=()=>{e.onpointermove=null}}});
+  img.onload=draw;setTimeout(draw,50);
+  $("#cl").onclick=()=>L.innerHTML="";$("#ap").onclick=()=>{L.innerHTML="";toast("Re-scanned with your crop")};
+}
+const KEY="frr_v6";
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify({roster:roster,trips:trips,tags:tags,uid:uid}))}
+  catch(e){if(!save.w){save.w=1;toast("Storage is full. Delete some old receipts.")}}
+}
+function load(){
+  try{
+    const d=JSON.parse(localStorage.getItem(KEY)||"null");
+    if(!d)return;
+    roster.splice(0,roster.length,...d.roster);
+    trips.splice(0,trips.length,...d.trips);
+    tags.splice(0,tags.length,...d.tags);
+    uid=Math.max(uid,d.uid||0);
+  }catch(e){}
+}
+load();
+setInterval(save,2000);
+document.addEventListener("visibilitychange",save);
+window.addEventListener("pagehide",save);
+render();
+</script>
+</body>
+</html>
