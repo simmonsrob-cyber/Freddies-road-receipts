@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-VERSION = "V10"
+VERSION = "V13"
 PORT = int(os.environ.get("PORT", "8081"))
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
@@ -27,7 +27,10 @@ JPEG_QUALITY = 65
 ACCEPT_SCORE = 85
 TIE_MARGIN = 8
 MIN_TEXT_CHARS = 20
-SINGLE_NAME_PENALTY = 5     # points off when only a surname or first name matched
+SINGLE_NAME_PENALTY = 5     # a surname or first name alone (95 when exact) still claims a receipt
+ONLY_CREW = True            # receipts can only be filed under people already on the crew list
+PRESET_CREW = ["Matthew Allen", "Cale Simmons", "Samuel Johnson", "Katie Ha", "Tristian Acosta",
+               "Jason Johns", "Alicia Grajeda", "Sebastian Romero"]   # Crew 4
 ELIMINATION_ENABLED = True
 ELIMINATION_MIN_SCORE = 60
 HOTEL_TAG = "Hotel"         # only this tag counts for the "who is missing" check
