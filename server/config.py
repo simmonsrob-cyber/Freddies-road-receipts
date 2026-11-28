@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-VERSION = "V24"
+VERSION = "V25"
 PORT = int(os.environ.get("PORT", "8081"))
 # Public access: the GitHub page talks to this server, so it needs a passcode and a CORS allow-list.
 ACCESS_CODE = os.environ.get("ACCESS_CODE", "").strip()
