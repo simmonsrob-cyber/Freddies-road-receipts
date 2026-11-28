@@ -2,7 +2,7 @@
 # Freddie's Road Receipts: install on this Raspberry Pi. Safe to run again.
 # Run from the unzipped folder:   bash install.sh
 # This does NOT touch the printer app (receipts.service, ~/receipts, port 8080),
-# Tailscale, Funnel, or the Ethernet cable setup.
+# Tailscale, Funnel, or the Ethernet cable setup. (Turning on the public address is a separate step.)
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ME="$(id -un)"
@@ -42,6 +42,13 @@ if [ -d "$APP/data" ] && [ -n "$(ls -A "$APP/data" 2>/dev/null)" ] && [ -z "$(ls
 fi
 if [ ! -f "$APP/.env" ]; then cp "$APP/.env.example" "$APP/.env"; say "   Created $APP/.env (edit it later for email)."; fi
 grep -q '^DATA_DIR=' "$APP/.env" || printf '\nDATA_DIR=%s\n' "$DATA" >> "$APP/.env"
+# V24: passcode for the public GitHub page, a safe origin list, and the new public address
+if ! grep -q '^ACCESS_CODE=.\+' "$APP/.env"; then
+  CODE="$(python3 -c 'import secrets;print(secrets.token_urlsafe(9))')"
+  sed -i '/^ACCESS_CODE=/d' "$APP/.env"; printf 'ACCESS_CODE=%s\n' "$CODE" >> "$APP/.env"; NEWCODE="$CODE"
+fi
+grep -q '^ALLOWED_ORIGINS=' "$APP/.env" || printf 'ALLOWED_ORIGINS=https://simmonsrob-cyber.github.io\n' >> "$APP/.env"
+sed -i 's#^PUBLIC_BASE_URL=http://acars-pi2.tail5b21f4.ts.net:8081#PUBLIC_BASE_URL=https://acars-pi2.tail5b21f4.ts.net:8443#' "$APP/.env"
 chmod 600 "$APP/.env"
 
 step "4 of 5. Python setup (a minute or two)"
@@ -80,9 +87,10 @@ fi
 
 say ""
 say "  ================================================================"
-say "  DONE. Open on your phone (same Wi-Fi or Tailscale):"
-say "    http://$(hostname).local:$PORT"
-say "    http://acars-pi2.tail5b21f4.ts.net:$PORT"
+say "  DONE. The site is the GitHub page: https://simmonsrob-cyber.github.io/Freddies-road-receipts/"
+say "  It reaches this Pi at https://acars-pi2.tail5b21f4.ts.net:8443 (turn that on once, see the README)."
+say "  Direct, same Wi-Fi only: http://$(hostname).local:$PORT"
+if [ -n "${NEWCODE-}" ]; then say "  YOUR PASSCODE (type it once on each phone): $NEWCODE"; else say "  Passcode: see ACCESS_CODE in $APP/.env  (cat $APP/.env | grep ACCESS_CODE)"; fi
 say "  Your missions, scans and PDFs live in: $DATA (updates never touch it)"
 say "  Logs:    journalctl -u $SVC -n 30"
 say "  Restart: sudo systemctl restart $SVC"
