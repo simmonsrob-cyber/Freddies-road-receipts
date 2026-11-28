@@ -5,8 +5,8 @@ let CODE="";try{CODE=localStorage.getItem("frr-code")||""}catch(e){}
 const U=p=>API+p+(CODE?(p.includes("?")?"&":"?")+"k="+encodeURIComponent(CODE):"");
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const PAGE="V29",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
-const HIST=[["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
+const PAGE="V30",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
+const HIST=[["V30","Page only","Tap or hover the 6 of 8 number for a done / missing popup, trip overview with who is missing"],["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 async function api(path,body,method){
@@ -70,7 +70,7 @@ function verBar(){
   bar.className="vbar "+(!pi?"unk":ok?"ok":"bad");
   bar.innerHTML=!pi?`Page <b>${PAGE}</b> &middot; Pi version unknown`:ok?`Page <b>${PAGE}</b> &middot; Pi <b>${esc(pi)}</b> &middot; &#10003; no Pi update needed`:`Page <b>${PAGE}</b> &middot; Pi <b>${esc(pi)}</b> &middot; <b>Pi update needed</b> (this page needs Pi ${PI_NEEDS} or newer)`;
 }
-async function render(){
+async function render(){popHide();
   const [,page,id]=(location.hash||"#/").split("/");
   const t=TRIP(id);
   const pages={"":home,dev:devPage,roster:rosterPage,newtrip:()=>newTrip(),trip:()=>t?tripPage(t):home(),batch:()=>batchPage(id),review:()=>t?reviewPage(t):home(),ac:()=>t?acPage(t):home()};
@@ -165,15 +165,15 @@ function stayKey(b){return b.dateFinal||b.dateGuess||"9999-99-99"}
 function stayCard(t,b){
   const m=missing(t,b),n=t.members.length-m.length,full=t.members.length>0&&!m.length,empty=!b.receipts.length;
   const pc=t.members.length?Math.round(100*n/t.members.length):0;
-  const pill=empty?'<span class="pill warn">No receipts yet</span>':`<span class="pill tap ${full?"ok":"bad"}" data-who="s${b.id}" role="button" tabindex="0">${n} of ${t.members.length}${full?" &#10003;":""}</span>`;
   const have=present(b);
+  const pill=empty?'<span class="pill warn">No receipts yet</span>':`<span class="pill tap ${full?"ok":"bad"}" data-who="s${b.id}" data-have="${esc(t.members.filter(i=>have.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!have.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${n} of ${t.members.length}${full?" &#10003;":""}</span>`;
   const tagSet=g=>new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===g).map(r=>r.pid));
   const nS=tagSet(NONA),reqN=b.nonaRequired||b.receipts.some(r=>r.tag===NONA),tS=tagSet("Taxi"),nOk=t.members.length>0&&t.members.every(i=>nS.has(i));
-  const subN=reqN?`<div class="sub"><span><b>Non Availability</b></span><span class="pill tap ${nOk?"ok":"bad"}" data-who="m${b.id}" role="button" tabindex="0">${t.members.filter(i=>nS.has(i)).length} of ${t.members.length}</span></div><div class="pchips wholist" data-wl="m${b.id}" ${openWho.has("m"+b.id)?"":"hidden"}>${t.members.map(i=>`<span class="pchip ${nS.has(i)?"y":"n"}">${nS.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`:"";
+  const subN=reqN?`<div class="sub"><span><b>Non Availability</b></span><span class="pill tap ${nOk?"ok":"bad"}" data-who="m${b.id}" data-have="${esc(t.members.filter(i=>nS.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!nS.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${t.members.filter(i=>nS.has(i)).length} of ${t.members.length}</span></div>`:"";
   const subT=tS.size?`<div class="sub"><span><b>Taxi</b> <span class="mut">${t.members.filter(i=>tS.has(i)).map(i=>esc(last(P(i)))).join(", ")}</span></span><span class="pill">${tS.size} filed</span></div>`:"";
   const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
   return `<div class="staywrap"><details class="stay ${full?"done":""}" data-sid="${b.id}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
-  <div class="spanel" data-b="${b.id}"></div>${empty?`<div class="row" style="gap:.5rem"><button class="btn sm danger" data-delstay="${b.id}">Remove this empty stay</button></div>`:""}</details><div class="pchips wholist" data-wl="s${b.id}" ${openWho.has("s"+b.id)?"":"hidden"}>${people||'<span class="mut">No crew list on this mission.</span>'}</div>${subN}${subT}</div>`;
+  <div class="spanel" data-b="${b.id}"></div>${empty?`<div class="row" style="gap:.5rem"><button class="btn sm danger" data-delstay="${b.id}">Remove this empty stay</button></div>`:""}</details>${subN}${subT}</div>`;
 }
 function devFiles(t){
   const bs=t.batches.filter(b=>b.receipts.length);
@@ -216,9 +216,14 @@ function tripPage(t){
   const OPT=["Taxi"];
   const catSet=g=>new Set(t.batches.flatMap(b=>b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===g).map(r=>r.pid)));
   const catBox=g=>{const h=catSet(g),n=t.members.filter(id=>h.has(id)).length,op=OPT.includes(g),ok=n===t.members.length&&n>0;return `<button class="catbox" data-cat="${esc(g)}"><span><b>${esc(TL(g))}</b>${op?' <span class="mut">(optional)</span>':""}</span><span class="pill ${op?"":(ok?"ok":"bad")}">${op?n+" filed":n+" of "+t.members.length}</span></button>`};
+  const need=lv.length*t.members.length,got=need-st.miss,pct=need?Math.round(100*got/need):0;
+  const who=report(t).filter(x=>x.miss.length),lbl=b=>hotel(b)||b.label;
+  const overview=need?`<div class="row sp" style="margin-bottom:.3rem"><span><b>${got} of ${need}</b> hotel receipts filed</span><span class="mut">${pct}%</span></div><div class="prog"><i style="width:${pct}%;background:${st.miss?"var(--warn)":"var(--ok)"}"></i></div>
+  <div style="margin:.5rem 0 .6rem">${who.length?`<div class="mut" style="margin-bottom:.25rem">Still missing (tap a name for the hotels):</div><div class="pchips">${who.map(x=>`<span class="pchip n tap" data-who="w${x.p.id}" data-miss="${esc(x.miss.map(lbl).join("|"))}" data-have="${esc(lv.filter(b=>!x.miss.includes(b)).map(lbl).join("|"))}" role="button" tabindex="0">${esc(last(x.p))} &middot; ${x.miss.length}</span>`).join("")}</div>`:`<span class="pill ok">Everyone has every hotel receipt &#10003;</span>`}</div>`:"";
   const grid=lv.length>1?`<details class="card"><summary><b>Full grid (everyone, every stay)</b></summary><div style="overflow-x:auto;margin-top:.5rem"><table class="mx"><tr><th>Person</th>${lv.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${lv.map(b=>{const m=missing(t,b).includes(x.p.id);return `<td class="${m?"n":"y"}">${m?"MISSING":"&#10003;"}</td>`}).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></details>`:"";
   app.innerHTML=`<div class="card"><div class="row sp"><div><b>${stays.length} stay${stays.length===1?"":"s"}</b> &middot; ${complete} complete</div><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div>
   <div class="mut" style="margin:.2rem 0 .5rem">${st.miss?`<span class="miss">${st.miss} receipt${st.miss===1?"":"s"} still missing</span>`:(stays.length?"Nobody is missing anything":"No stays yet")}${datesTxt(t)?" &middot; "+datesTxt(t):""} &middot; ${t.members.length} people</div>
+  ${overview}
   <div class="row" style="gap:.5rem;flex-wrap:wrap"><a class="btn sm" href="#/review/${t.id}">Not sure whose ${q?`<span class="pill warn">${q}</span>`:""}</a><a class="btn sm" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">AC Review</a></div></div>
   <h2 style="margin:.9rem 0 .4rem">Hotel stays</h2>
   ${stays.map(b=>stayCard(t,b)).join("")||'<div class="card mut">No stays yet. Start one for your first hotel.</div>'}
@@ -255,7 +260,24 @@ function tripPage(t){
   app.querySelectorAll("[data-delstay]").forEach(bt=>bt.onclick=async()=>{if(!confirm("Remove this empty stay?"))return;const r=await api("/api/batch/"+bt.dataset.delstay+"/delete",{});if(!r.ok)return toast(r.error||"Could not remove.");await refresh();tripPage(TRIP(t.id))});
   const ro=$("#reopen");if(ro)ro.onclick=async()=>{await api("/api/trip/"+t.id+"/status",{status:"open"});await refresh();tripPage(TRIP(t.id));toast("Mission reopened")};
 }
-function bindWho(root){root.querySelectorAll("[data-who]").forEach(p=>{const tg=e=>{e.preventDefault();e.stopPropagation();const k=p.dataset.who,l=root.querySelector('[data-wl="'+k+'"]');if(!l)return;l.hidden=!l.hidden;l.hidden?openWho.delete(k):openWho.add(k)};p.onclick=tg;p.onkeydown=e=>{if(e.key==="Enter"||e.key===" ")tg(e)}})}
+function popHide(){const p=document.getElementById("pop");if(p)p.hidden=true;popFor=null}
+let popFor=null;
+function popShow(el){
+  let p=document.getElementById("pop");if(!p){p=document.createElement("div");p.id="pop";document.body.appendChild(p)}
+  const li=v=>v?v.split("|").map(n=>`<div>${esc(n)}</div>`).join(""):'<div class="mut">nobody</div>';
+  p.innerHTML=`<div class="pcol miss"><b>&#10007; Missing</b>${li(el.dataset.miss)}</div><div class="pcol have"><b>&#10003; Done</b>${li(el.dataset.have)}</div>`;
+  p.hidden=false;popFor=el;
+  const r=el.getBoundingClientRect(),w=p.offsetWidth,h=p.offsetHeight;
+  let x=Math.min(Math.max(8,r.right-w),innerWidth-w-8),y=r.bottom+6;if(y+h>innerHeight-8)y=Math.max(8,r.top-h-6);
+  p.style.left=x+"px";p.style.top=y+"px";
+}
+const canHover=matchMedia("(hover:hover)").matches;
+document.addEventListener("click",e=>{if(popFor&&!e.target.closest("[data-who]")&&!e.target.closest("#pop"))popHide()});
+window.addEventListener("scroll",popHide,{passive:true});
+function bindWho(root){root.querySelectorAll("[data-who]").forEach(p=>{
+  const tg=e=>{e.preventDefault();e.stopPropagation();popFor===p?popHide():popShow(p)};
+  p.onclick=tg;p.onkeydown=e=>{if(e.key==="Enter"||e.key===" ")tg(e)};
+  if(canHover){p.onmouseenter=()=>popShow(p);p.onmouseleave=()=>{if(popFor===p)popHide()}}})}
 function stayPanel(t,b){
   const aw=b.receipts.filter(r=>r.status==="needs_review").length,pr=b.receipts.filter(r=>r.status==="processing").length;
   const byP={};b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid).forEach(r=>(byP[r.pid]??=[]).push(r));
@@ -271,7 +293,7 @@ function stayPanel(t,b){
    <div class="prog-box"></div></div>
   <div class="card"><h2>Non Availability</h2>
    <label class="row" style="gap:.6rem;min-height:44px"><input type="checkbox" class="nreq" ${req?"checked":""} ${anyN?"disabled":""}> <span>Non Availability required for this stay</span></label>
-   ${req?`<div class="row sp"><span class="mut">Everyone needs one. Tap the number to see who.</span><span class="pill tap ${t.members.length-t.members.filter(i=>nh.has(i)).length?"bad":"ok"}" data-who="p${b.id}" role="button" tabindex="0">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div><div class="pchips wholist" data-wl="p${b.id}" ${openWho.has("p"+b.id)?"":"hidden"}>${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`:`<div class="mut">Not required for this stay.</div>`}
+   ${req?`<div class="row sp"><span class="mut">Everyone needs one. Tap the number to see who.</span><span class="pill tap ${t.members.length-t.members.filter(i=>nh.has(i)).length?"bad":"ok"}" data-who="p${b.id}" data-have="${esc(t.members.filter(i=>nh.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!nh.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div>`:`<div class="mut">Not required for this stay.</div>`}
    <button class="btn npick">Add Non Availability receipts</button><input type="file" class="nfiles" ${FA} multiple hidden></div>
   <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
    <input type="text" class="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" class="dt" value="${esc(b.dateFinal||b.dateGuess)}">
