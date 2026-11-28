@@ -1,9 +1,12 @@
 """Receipt OCR App: Flask app, background worker, routes."""
+import hmac
 import json
 import queue
+import re
 import secrets
 import shutil
 import threading
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -130,11 +133,33 @@ def create_app(start=True):
     def bad(msg, code=400):
         return jsonify(ok=False, error=msg), code
 
+    OPEN_PATHS = ("/", "/health")
+
+    @app.before_request
+    def guard():
+        if request.method == "OPTIONS":
+            return ("", 204)
+        p = request.path
+        if not config.ACCESS_CODE or p in OPEN_PATHS or p.startswith("/static/") or p.startswith("/download/"):
+            return None            # /download/ links carry their own long random token
+        got = request.headers.get("X-Code") or request.args.get("k") or ""
+        if not hmac.compare_digest(got.encode(), config.ACCESS_CODE.encode()):
+            time.sleep(0.4)        # slows guessing
+            return jsonify(ok=False, auth=True, error="Wrong or missing passcode."), 401
+        return None
+
     @app.after_request
     def hdr(r):
         r.headers["X-Content-Type-Options"] = "nosniff"
         if request.path.startswith("/api/"):
             r.headers["Cache-Control"] = "no-store"
+        o = request.headers.get("Origin", "").rstrip("/")
+        if o and o in config.ALLOWED_ORIGINS:
+            r.headers["Access-Control-Allow-Origin"] = o
+            r.headers["Vary"] = "Origin"
+            r.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Code"
+            r.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            r.headers["Access-Control-Max-Age"] = "600"
         return r
 
     @app.get("/")
@@ -224,10 +249,37 @@ def create_app(start=True):
 
     @app.post("/api/trip/<int:tid>/delete")
     def trip_delete(tid):
+        # "delete" only archives: the mission leaves the main page and waits in Dev tools > Archived
         c = db.conn()
         if not c.execute("SELECT 1 FROM trip WHERE id=?", (tid,)).fetchone():
             c.close()
             return bad("That mission is already gone.", 404)
+        c.execute("UPDATE trip SET archived_at=? WHERE id=?", (db.now(), tid))
+        c.commit()
+        c.close()
+        return J(ok=True, archived=True)
+
+    @app.post("/api/trip/<int:tid>/restore")
+    def trip_restore(tid):
+        c = db.conn()
+        if not c.execute("SELECT 1 FROM trip WHERE id=?", (tid,)).fetchone():
+            c.close()
+            return bad("That mission is gone.", 404)
+        c.execute("UPDATE trip SET archived_at='' WHERE id=?", (tid,))
+        c.commit()
+        c.close()
+        return J(ok=True)
+
+    @app.post("/api/trip/<int:tid>/purge")
+    def trip_purge(tid):
+        c = db.conn()
+        row = c.execute("SELECT archived_at FROM trip WHERE id=?", (tid,)).fetchone()
+        if not row:
+            c.close()
+            return bad("That mission is already gone.", 404)
+        if not row["archived_at"]:
+            c.close()
+            return bad("Archive the mission first. Only archived missions can be erased.", 400)
         c.execute("DELETE FROM receipt WHERE batch_id IN (SELECT id FROM batch WHERE trip_id=?)", (tid,))
         c.execute("DELETE FROM batch WHERE trip_id=?", (tid,))
         c.execute("DELETE FROM trip_member WHERE trip_id=?", (tid,))
@@ -237,6 +289,26 @@ def create_app(start=True):
         c.close()
         # every photo, scan and zip of a mission lives in its own folder
         shutil.rmtree(config.DATA_DIR / "trips" / str(int(tid)), ignore_errors=True)
+        return J(ok=True)
+
+    @app.post("/api/trip/<int:tid>/dates")
+    def trip_dates(tid):
+        d = request.get_json(force=True)
+        vals = []
+        for k in ("startDate", "endDate"):
+            v = (d.get(k) or "").strip()
+            if v and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+                return bad("Dates look like 2026-03-05.")
+            vals.append(v)
+        if vals[0] and vals[1] and vals[1] < vals[0]:
+            return bad("The end date is before the start date.")
+        c = db.conn()
+        if not c.execute("SELECT 1 FROM trip WHERE id=?", (tid,)).fetchone():
+            c.close()
+            return bad("That mission is gone.", 404)
+        c.execute("UPDATE trip SET start_date=?, end_date=? WHERE id=?", (vals[0], vals[1], tid))
+        c.commit()
+        c.close()
         return J(ok=True)
 
     @app.post("/api/trip/<int:tid>/status")
@@ -259,12 +331,56 @@ def create_app(start=True):
         c.close()
         return J(ok=True, id=cur.lastrowid)
 
+    @app.post("/api/trip/<int:tid>/extras")
+    def extras_batch(tid):
+        # one hidden holder per mission for Taxi / Non Availability / CNA receipts, so they never look like a hotel
+        c = db.conn()
+        if not c.execute("SELECT 1 FROM trip WHERE id=?", (tid,)).fetchone():
+            c.close()
+            return bad("That mission is gone.", 404)
+        row = c.execute("SELECT id FROM batch WHERE trip_id=? AND kind='extras'", (tid,)).fetchone()
+        if row:
+            c.close()
+            return J(ok=True, id=row["id"])
+        seq = c.execute("SELECT COALESCE(MAX(seq),0)+1 FROM batch WHERE trip_id=?", (tid,)).fetchone()[0]
+        cur = c.execute("INSERT INTO batch(trip_id, seq, label, created_at, kind) VALUES (?,?,?,?,'extras')", (tid, seq, "Other receipts", db.now()))
+        c.commit()
+        c.close()
+        return J(ok=True, id=cur.lastrowid)
+
+    @app.post("/api/batch/<int:bid>/nona")
+    def batch_nona(bid):
+        d = request.get_json(force=True)
+        c = db.conn()
+        if not c.execute("SELECT 1 FROM batch WHERE id=?", (bid,)).fetchone():
+            c.close()
+            return bad("That stay is gone.", 404)
+        c.execute("UPDATE batch SET nona_required=? WHERE id=?", (1 if d.get("required") else 0, bid))
+        c.commit()
+        c.close()
+        return J(ok=True)
+
     @app.post("/api/batch/<int:bid>/meta")
     def batch_meta(bid):
         d = request.get_json(force=True)
         c = db.conn()
         c.execute("UPDATE batch SET hotel_final=?, date_final=? WHERE id=?",
                   ((d.get("hotel") or "").strip(), (d.get("date") or "").strip(), bid))
+        c.commit()
+        c.close()
+        return J(ok=True)
+
+    @app.post("/api/batch/<int:bid>/delete")
+    def batch_delete(bid):
+        # only an empty stay can be removed, so a slip can never lose receipts
+        c = db.conn()
+        if not c.execute("SELECT 1 FROM batch WHERE id=?", (bid,)).fetchone():
+            c.close()
+            return bad("That stay is already gone.", 404)
+        if c.execute("SELECT 1 FROM receipt WHERE batch_id=?", (bid,)).fetchone():
+            c.close()
+            return bad("This stay has receipts in it. Delete those first.", 400)
+        c.execute("DELETE FROM batch WHERE id=?", (bid,))
         c.commit()
         c.close()
         return J(ok=True)
@@ -423,10 +539,10 @@ def create_app(start=True):
         attach = mb <= config.MAX_ATTACH_MB - config.ATTACH_MARGIN_MB
         rep = reports.report(trip, st["roster"])
         lines = [reports.sentence(x["person"], x["missing"]) for x in rep if x["missing"]] or ["Nobody is missing receipts."]
-        body = (f"Receipts for {trip['name']}\n\n" + "\n".join(lines) +
+        body = (f"Receipts for {trip['name']}\n" + (f"{trip['startDate'] or '?'} to {trip['endDate'] or '?'}\n" if trip.get("startDate") or trip.get("endDate") else "") + "\n" + "\n".join(lines) +
                 f"\n\n{info['receipts']} receipts in the zip ({mb:.1f} MB).\n" +
                 ("The zip is attached. " if attach else "The zip is too big to attach, so use the link. ") +
-                f"\nDownload link (works on Tailscale): {link}\n")
+                f"\nDownload link: {link}\n")
         err = mailer.send(f"Receipts: {trip['name']}", body, info["path"] if attach else None)
         if err is None:
             c = db.conn()
