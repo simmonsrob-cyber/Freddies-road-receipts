@@ -25,7 +25,7 @@ function loginScreen(msg){
 let S={roster:[],tags:[],trips:[]},busy=0,selTag=null,shrinkOn=true;
 const P=id=>S.roster.find(p=>p.id===id)||{id,name:"?"};
 const last=p=>p.name.split(" ").slice(-1)[0];
-const HOTEL="Hotel",NONA="NONA";
+const FA='accept="image/*,application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"';const HOTEL="Hotel",NONA="NONA";
 const TL=g=>g===NONA?"Non Availability":g;
 const TORD=["Hotel","Taxi",NONA,"CNA"];
 const tagsSorted=()=>[...S.tags].sort((a,b)=>{const x=TORD.indexOf(a),y=TORD.indexOf(b);return (x<0?99:x)-(y<0?99:y)});
@@ -225,12 +225,14 @@ function tripPage(t){
   };
   $("#nb").onclick=()=>stayModal(t);
   app.querySelectorAll("[data-cat]").forEach(bt=>bt.onclick=()=>{const g=bt.dataset.cat,h=catSet(g),L=$("#layer");
-    L.innerHTML=`<div class="modal"><div class="sheet"><h2>${esc(TL(g))}</h2><div class="mut">Add the receipts here. Green means a receipt is filed.</div><div class="pchips">${t.members.map(id=>`<span class="pchip ${h.has(id)?"y":"n"}">${h.has(id)?"&#10003;":"&#10007;"} ${esc(P(id).name)}</span>`).join("")}</div><button class="btn pri" id="cpk">Add receipts with photo library</button><button class="btn" id="csh">Take photo</button><input type="file" id="cf" accept="image/*" multiple hidden><input type="file" id="cc" accept="image/*" capture="environment" hidden><div id="prog"></div><button class="btn" id="ccl">Close</button></div></div>`;
+    let who=0;
+    L.innerHTML=`<div class="modal"><div class="sheet"><h2>${esc(TL(g))}</h2><div class="mut">Tap the person this receipt belongs to, then add it. A check means that person already has one filed.</div><div class="pchips">${t.members.map(id=>`<button type="button" class="pchip pick ${h.has(id)?"y":""}" data-w="${id}">${h.has(id)?"&#10003; ":""}${esc(P(id).name)}</button>`).join("")}</div><div class="mut" id="wsel">Pick a name first.</div><button class="btn pri" id="cpk" disabled>Add receipt from library or files</button><button class="btn" id="csh" disabled>Take photo</button><input type="file" id="cf" ${FA} multiple hidden><input type="file" id="cc" accept="image/*" capture="environment" hidden><div id="prog"></div><button class="btn" id="ccl">Close</button></div></div>`;
     $("#ccl").onclick=()=>L.innerHTML="";
+    L.querySelectorAll("[data-w]").forEach(el=>el.onclick=()=>{who=+el.dataset.w;L.querySelectorAll("[data-w]").forEach(x=>x.classList.toggle("sel",x===el));$("#wsel").textContent="Adding for "+P(who).name;$("#cpk").disabled=$("#csh").disabled=false});
     $("#cpk").onclick=()=>$("#cf").click();$("#csh").onclick=()=>$("#cc").click();
-    const go3=async e=>{const fs=[...e.target.files];e.target.value="";if(!fs.length)return;
+    const go3=async e=>{const fs=[...e.target.files];e.target.value="";if(!fs.length||!who)return;
       const x=await api("/api/trip/"+t.id+"/extras",{});if(!x.ok)return toast(x.error||"Could not start.");await refresh();
-      await upload({id:x.id},fs,g);L.innerHTML=""};
+      await upload({id:x.id},fs,g,who);L.innerHTML=""};
     $("#cf").onchange=go3;$("#cc").onchange=go3});
   app.querySelectorAll("[data-delstay]").forEach(bt=>bt.onclick=async()=>{if(!confirm("Remove this empty stay?"))return;const r=await api("/api/batch/"+bt.dataset.delstay+"/delete",{});if(!r.ok)return toast(r.error||"Could not remove.");await refresh();tripPage(TRIP(t.id))});
   const ro=$("#reopen");if(ro)ro.onclick=async()=>{await api("/api/trip/"+t.id+"/status",{status:"open"});await refresh();tripPage(TRIP(t.id));toast("Mission reopened")};
@@ -243,35 +245,38 @@ function batchPage(id){
   app.innerHTML=`<div class="counter ${m.length?'warn':'ok'}"><span><span class="big">${n} of ${t.members.length}</span> hotel receipts</span>${aw?`<a class="lnk" href="#/review/${t.id}">${aw} to review</a>`:""}</div>
   ${pr?`<div class="card">Reading ${pr} receipt${pr>1?"s":""}… this page updates by itself.</div>`:""}
   ${m.length&&b.receipts.length?`<div class="card"><b class="miss">Missing:</b> ${m.map(i=>`<span class="miss">${esc(P(i).name)}</span>`).join(", ")}</div>`:""}
+  <button class="btn pri" id="sret">Save and return</button>
   <div class="drop">
-   <div class="step"><b>Add receipts</b></div><div class="dd mut">On a computer you can also drag photos onto this box.</div>
-   <input type="file" id="files" accept="image/*" multiple hidden><input type="file" id="cam" accept="image/*" capture="environment" hidden>
-   <button class="btn pri" id="pick">Add receipts with photo library</button><button class="btn" id="shoot">Take photo</button>
+   <div class="step"><b>Add receipts</b></div><div class="dd mut">On a computer you can also drag photos, PDFs or Word files onto this box.</div>
+   <input type="file" id="files" ${FA} multiple hidden><input type="file" id="cam" accept="image/*" capture="environment" hidden>
+   <button class="btn pri" id="pick">Add receipts from library or files (photos, PDF, Word)</button><button class="btn" id="shoot">Take photo</button>
    <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then Hotel.</div>
    <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" id="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
    <div id="prog"></div></div>
   <div class="card"><h2>Non Availability</h2>
-   ${(()=>{const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));const any=b.receipts.some(r=>r.tag===NONA);return any?`<div class="row sp"><span class="mut">Everyone needs one for this stay</span><span class="pill ${t.members.length-nh.size?"bad":"ok"}">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div><div class="pchips">${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`:`<div class="mut">None uploaded, so it is not required for this stay.</div>`})()}
-   <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" accept="image/*" multiple hidden></div>
+   ${(()=>{const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));const req=b.nonaRequired||b.receipts.some(r=>r.tag===NONA);return `<label class="row" style="gap:.6rem;min-height:44px"><input type="checkbox" id="nreq" ${req?"checked":""} ${b.receipts.some(r=>r.tag===NONA)?"disabled":""}> <span>Non Availability required for this stay</span></label>`+(req?`<div class="row sp"><span class="mut">Everyone needs one for this stay</span><span class="pill ${t.members.length-t.members.filter(i=>nh.has(i)).length?"bad":"ok"}">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div><div class="pchips">${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`:`<div class="mut">Not required for this stay.</div>`)})()}
+   <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" ${FA} multiple hidden></div>
   <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
    <input type="text" id="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" id="dt" value="${esc(b.dateFinal||b.dateGuess)}">
    <button class="btn" id="sv">Save</button></div>
   ${Object.keys(byP).length?`<div class="card"><h2>Filed receipts</h2>${t.members.filter(i=>byP[i]).map(i=>`<div class="who">${esc(P(i).name)}</div><div class="grid">${byP[i].map(r=>`<div><button class="thumb" data-r="${r.id}" style="width:100%"><img src="${U(r.img)}" alt="">${r.inferred?'<span class="tag">guessed by elimination</span>':""}</button><div class="cap">${esc(fname(t,r))}</div></div>`).join("")}</div>`).join("")}</div>`:""}`;
   $("#sv").onclick=async()=>{await api("/api/batch/"+b.id+"/meta",{hotel:$("#hn").value,date:$("#dt").value});await refresh();toast("Saved");batchPage(id)};
+  $("#sret").onclick=async()=>{const hv=$("#hn").value,dv=$("#dt").value;if(hv!==(b.hotelFinal||b.hotelGuess)||dv!==(b.dateFinal||b.dateGuess))await api("/api/batch/"+b.id+"/meta",{hotel:hv,date:dv});await refresh();toast("Saved");location.hash="#/trip/"+t.id};
   selTag=HOTEL;const needTag=()=>true;
   $("#shr").onchange=e=>shrinkOn=e.target.checked;
   const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,selTag)};
   $("#pick").onclick=()=>needTag()&&$("#files").click();
   $("#shoot").onclick=()=>needTag()&&$("#cam").click();
   $("#files").onchange=fromInput;$("#cam").onchange=fromInput;
+  $("#nreq").onchange=async e=>{const r=await api("/api/batch/"+b.id+"/nona",{required:e.target.checked});if(!r.ok)return toast(r.error||"Could not save.");await refresh();batchPage(id)};
   $("#npick").onclick=()=>$("#nfiles").click();$("#nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA)};
   // drag and drop (computers)
   const dz=$(".drop");
   ["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over")}));
   ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over")}));
   dz.addEventListener("drop",e=>{
-    const fs=[...(e.dataTransfer?e.dataTransfer.files:[])].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif)$/i.test(f.name));
-    if(!fs.length)return toast("Drop photo files (JPEG, PNG or HEIC).");
+    const fs=[...(e.dataTransfer?e.dataTransfer.files:[])].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|pdf|docx?)$/i.test(f.name));
+    if(!fs.length)return toast("Drop photos, PDFs or Word files.");
     if(needTag())upload(b,fs,selTag);
   });
   app.querySelectorAll("button.thumb").forEach(el=>el.onclick=()=>cropModal(findBatch(id).b.receipts.find(r=>r.id==el.dataset.r)));
@@ -286,14 +291,14 @@ async function shrinkFile(f){
     return blob&&blob.size<f.size?new File([blob],f.name.replace(/\.\w+$/,"")+".jpg",{type:"image/jpeg"}):f;
   }catch(e){return f}   // e.g. HEIC the browser cannot draw: send as is
 }
-async function upload(b,files,tag){
+async function upload(b,files,tag,pid){
   busy++;
   const box=$("#prog");box.innerHTML=files.map((f,i)=>`<div style="margin-top:.6rem"><div class="row sp"><span>${esc(f.name)}</span><span class="mut" id="st${i}">Waiting</span></div><div class="prog"><i id="pb${i}"></i></div></div>`).join("");
   try{
-    const fd=new FormData();fd.append("tag",tag);const sizes=[];
+    const fd=new FormData();fd.append("tag",tag);if(pid)fd.append("person_id",pid);const sizes=[];
     for(let i=0;i<files.length;i++){
       $("#st"+i).textContent=shrinkOn?"Shrinking…":"Preparing…";$("#pb"+i).style.width="10%";
-      const f=shrinkOn?await shrinkFile(files[i]):files[i];
+      const f=shrinkOn&&/^image\//.test(files[i].type)?await shrinkFile(files[i]):files[i];
       sizes.push(kb(files[i].size)+(f.size<files[i].size?" to "+kb(f.size):""));fd.append("files",f);$("#pb"+i).style.width="25%";
     }
     files.forEach((_,i)=>$("#st"+i).textContent="Sending…");
