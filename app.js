@@ -5,8 +5,8 @@ let CODE="";try{CODE=localStorage.getItem("frr-code")||""}catch(e){}
 const U=p=>API+p+(CODE?(p.includes("?")?"&":"?")+"k="+encodeURIComponent(CODE):"");
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const PAGE="V31",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
-const HIST=[["V31","Page only","Non-A button on each hotel row: pick the person, then upload or take photos"],["V30","Page only","Tap or hover the 6 of 8 number for a done / missing popup, trip overview with who is missing"],["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
+const PAGE="V32",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
+const HIST=[["V32","Page only","Hotel name and date edited with a small pencil next to the hotel name"],["V31","Page only","Non-A button on each hotel row: pick the person, then upload or take photos"],["V30","Page only","Tap or hover the 6 of 8 number for a done / missing popup, trip overview with who is missing"],["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 async function api(path,body,method){
@@ -172,7 +172,7 @@ function stayCard(t,b){
   const subN=reqN?`<div class="sub"><span><b>Non Availability</b></span><span class="pill tap ${nOk?"ok":"bad"}" data-who="m${b.id}" data-have="${esc(t.members.filter(i=>nS.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!nS.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${t.members.filter(i=>nS.has(i)).length} of ${t.members.length}</span></div>`:"";
   const subT=tS.size?`<div class="sub"><span><b>Taxi</b> <span class="mut">${t.members.filter(i=>tS.has(i)).map(i=>esc(last(P(i)))).join(", ")}</span></span><span class="pill">${tS.size} filed</span></div>`:"";
   const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
-  return `<div class="staywrap"><details class="stay ${full?"done":""}" data-sid="${b.id}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div><button type="button" class="btn sm nabtn" data-na="${b.id}">Non-A</button>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
+  return `<div class="staywrap"><details class="stay ${full?"done":""}" data-sid="${b.id}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b> <button type="button" class="edbtn" data-ed="${b.id}" title="Edit hotel name and date" aria-label="Edit hotel name and date">&#9998;</button><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div><button type="button" class="btn sm nabtn" data-na="${b.id}">Non-A</button>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
   <div class="spanel" data-b="${b.id}"></div>${empty?`<div class="row" style="gap:.5rem"><button class="btn sm danger" data-delstay="${b.id}">Remove this empty stay</button></div>`:""}</details>${subN}${subT}</div>`;
 }
 function devFiles(t){
@@ -257,6 +257,11 @@ function tripPage(t){
       let target=stay;if(!target){const x=await api("/api/trip/"+t.id+"/extras",{});if(!x.ok)return toast(x.error||"Could not start.");await refresh();target=x.id}
       await upload({id:target},fs,g,who);L.innerHTML=""};
     $("#cf").onchange=go3;$("#cc").onchange=go3});
+  app.querySelectorAll("[data-ed]").forEach(bt=>bt.onclick=e=>{e.preventDefault();e.stopPropagation();
+    const b=TRIP(t.id).batches.find(x=>x.id==bt.dataset.ed),L=$("#layer");
+    L.innerHTML=`<div class="modal"><div class="sheet"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess&&!b.hotelFinal?"Our guess, tap to fix:":"Change the name or date."}</div><input type="text" id="ehn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name" autocomplete="off"><div style="height:.5rem"></div><input type="date" id="edt" value="${esc(b.dateFinal||b.dateGuess)}"><button class="btn pri" id="esv">Save</button><button class="btn" id="ecl">Cancel</button></div></div>`;
+    $("#ecl").onclick=()=>L.innerHTML="";
+    $("#esv").onclick=async()=>{const r=await api("/api/batch/"+b.id+"/meta",{hotel:$("#ehn").value,date:$("#edt").value});if(r&&r.ok===false)return toast(r.error||"Could not save.");L.innerHTML="";await refresh();toast("Saved");tripPage(TRIP(t.id))}});
   app.querySelectorAll("[data-na]").forEach(bt=>bt.onclick=e=>{e.preventDefault();e.stopPropagation();
     const b=TRIP(t.id).batches.find(x=>x.id==bt.dataset.na)||t.batches.find(x=>x.id==bt.dataset.na),L=$("#layer"),h=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));let who=0;
     L.innerHTML=`<div class="modal"><div class="sheet"><h2>Non Availability</h2><div class="mut">${esc(hotel(b)||b.label)}. Tap the person, then add the receipt. A check means that person already has one.</div><div class="pchips">${t.members.map(id=>`<button type="button" class="pchip pick ${h.has(id)?"y":""}" data-w="${id}">${h.has(id)?"&#10003; ":""}${esc(P(id).name)}</button>`).join("")}</div><div class="mut" id="wsel">Pick a name first.</div><button class="btn pri" id="npk" disabled>Add from library or files</button><button class="btn" id="nsh" disabled>Take photo</button><input type="file" id="nf" ${FA} multiple hidden><input type="file" id="nc" accept="image/*" capture="environment" hidden><button class="btn" id="ncl">Close</button></div></div>`;
@@ -303,17 +308,13 @@ function stayPanel(t,b){
    <label class="row" style="gap:.6rem;min-height:44px"><input type="checkbox" class="nreq" ${req?"checked":""} ${anyN?"disabled":""}> <span>Non Availability required for this stay</span></label>
    ${req?`<div class="row sp"><span class="mut">Everyone needs one. Tap the number to see who.</span><span class="pill tap ${t.members.length-t.members.filter(i=>nh.has(i)).length?"bad":"ok"}" data-who="p${b.id}" data-have="${esc(t.members.filter(i=>nh.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!nh.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${t.members.filter(i=>nh.has(i)).length} of ${t.members.length}</span></div>`:`<div class="mut">Not required for this stay.</div>`}
    <button class="btn npick">Add Non Availability receipts</button><input type="file" class="nfiles" ${FA} multiple hidden></div>
-  <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
-   <input type="text" class="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" class="dt" value="${esc(b.dateFinal||b.dateGuess)}">
-   <button class="btn sv">Save</button></div>
+
   ${Object.keys(byP).length?`<div class="card"><h2>Filed receipts</h2>${t.members.filter(i=>byP[i]).map(i=>`<div class="who">${esc(P(i).name)}</div><div class="grid">${byP[i].map(r=>`<div><button class="thumb" data-r="${r.id}" style="width:100%"><img src="${U(r.img)}" alt="">${r.inferred?'<span class="tag">guessed by elimination</span>':""}</button><div class="cap">${esc(fname(t,r))}</div></div>`).join("")}</div>`).join("")}</div>`:""}`;
 }
 function fillStay(box){
   const id=+box.dataset.b,{t,b}=findBatch(id);if(!b){box.innerHTML="";return}
   box.innerHTML=stayPanel(t,b);const q=s=>box.querySelector(s),prog=q(".prog-box");bindWho(box);
-  const meta=()=>api("/api/batch/"+b.id+"/meta",{hotel:q(".hn").value,date:q(".dt").value});
-  q(".sv").onclick=async()=>{await meta();await refresh();toast("Saved");tripPage(TRIP(t.id))};
-  q(".sret").onclick=async()=>{const hv=q(".hn").value,dv=q(".dt").value;if(hv!==(b.hotelFinal||b.hotelGuess)||dv!==(b.dateFinal||b.dateGuess))await meta();openStays.delete(b.id);await refresh();toast("Saved");tripPage(TRIP(t.id));window.scrollTo(0,0)};
+  q(".sret").onclick=async()=>{openStays.delete(b.id);await refresh();toast("Saved");tripPage(TRIP(t.id));window.scrollTo(0,0)};
   const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,HOTEL)};
   q(".pick").onclick=()=>q(".files").click();q(".shoot").onclick=()=>q(".cam").click();
   q(".files").onchange=fromInput;q(".cam").onchange=fromInput;
