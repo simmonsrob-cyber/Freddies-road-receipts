@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS person (
   aliases TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS trip (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open', sent_at TEXT);
+  status TEXT NOT NULL DEFAULT 'open', sent_at TEXT,
+  start_date TEXT NOT NULL DEFAULT '', end_date TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS trip_member (
   trip_id INTEGER NOT NULL REFERENCES trip(id),
   person_id INTEGER NOT NULL REFERENCES person(id),
@@ -57,6 +58,18 @@ def init():
     cols = {r["name"] for r in c.execute("PRAGMA table_info(receipt)")}
     if "sugg" not in cols:   # database made by an older version: add the column, keep every row
         c.execute("ALTER TABLE receipt ADD COLUMN sugg TEXT NOT NULL DEFAULT '[]'")
+    bcols = {r["name"] for r in c.execute("PRAGMA table_info(batch)")}
+    tcols0 = {r["name"] for r in c.execute("PRAGMA table_info(trip)")}
+    if "archived_at" not in tcols0:   # deleted missions are archived, never erased, until purged from Dev tools
+        c.execute("ALTER TABLE trip ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''")
+    if "nona_required" not in bcols:   # older database: Non Availability is not required unless switched on
+        c.execute("ALTER TABLE batch ADD COLUMN nona_required INTEGER NOT NULL DEFAULT 0")
+    if "kind" not in bcols:   # older database: hotel stays stay hotel stays; "extras" holds Taxi/Non Availability/CNA
+        c.execute("ALTER TABLE batch ADD COLUMN kind TEXT NOT NULL DEFAULT 'hotel'")
+    tcols = {r["name"] for r in c.execute("PRAGMA table_info(trip)")}
+    for col in ("start_date", "end_date"):   # older database: add the date columns, keep every mission
+        if col not in tcols:
+            c.execute("ALTER TABLE trip ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % col)
     if not c.execute("SELECT 1 FROM tag").fetchone():
         for i, t in enumerate(["Hotel", "NONA", "Taxi", "CNA"]):
             c.execute("INSERT INTO tag(name, sort) VALUES (?,?)", (t, i))
@@ -92,8 +105,11 @@ def state():
                 id=b["id"], label=b["label"] or "Batch %d" % b["seq"],
                 hotelGuess=b["hotel_guess"] or "", hotelFinal=b["hotel_final"] or "",
                 dateGuess=b["date_guess"] or "", dateFinal=b["date_final"] or "",
+                kind=b["kind"] or "hotel", nonaRequired=bool(b["nona_required"]),
                 receipts=recs.get(b["id"], [])))
         trips = [dict(id=t["id"], name=t["name"], status=t["status"], sentAt=t["sent_at"],
+                      startDate=t["start_date"] or "", endDate=t["end_date"] or "",
+                      archived=bool(t["archived_at"]), archivedAt=t["archived_at"] or "",
                       members=members.get(t["id"], []), batches=bats.get(t["id"], []))
                  for t in c.execute("SELECT * FROM trip ORDER BY id DESC")]
         return dict(version=config.VERSION, roster=roster, tags=tags, trips=trips)
