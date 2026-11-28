@@ -69,7 +69,7 @@ setInterval(async()=>{
   if(busy||$("#layer").innerHTML||/INPUT|TEXTAREA/.test(document.activeElement.tagName))return;
   const pg=(location.hash||"#/").split("/")[1]||"";
   if(!["","trip","batch","review"].includes(pg))return;
-  if(needLogin)return;const y=window.scrollY;await refresh();if(needLogin)return;await render();window.scrollTo(0,y);
+  if(needLogin)return;const y=window.scrollY;const op=[...document.querySelectorAll("details[open]")].map(d=>(d.querySelector("b")||{}).textContent);await refresh();if(needLogin)return;await render();document.querySelectorAll("details").forEach(d=>{if(op.includes((d.querySelector("b")||{}).textContent))d.open=true});window.scrollTo(0,y);
 },6000);
 
 // ---- pages
@@ -146,17 +146,34 @@ function newTrip(pre=[],nameVal=""){
     if(!n)return toast("Give the mission a name");
     const r=await api("/api/trip",{name:n,members:m});if(!r.ok)return toast(r.error);await refresh();go("#/trip/"+r.id)};
 }
+function stayKey(b){return b.dateFinal||b.dateGuess||"9999-99-99"}
+function stayCard(t,b){
+  const m=missing(t,b),n=t.members.length-m.length,full=t.members.length>0&&!m.length,empty=!b.receipts.length;
+  const pc=t.members.length?Math.round(100*n/t.members.length):0;
+  const pill=empty?'<span class="pill warn">No receipts yet</span>':`<span class="pill ${full?"ok":"bad"}">${n} of ${t.members.length}${full?" &#10003;":""}</span>`;
+  const have=present(b);
+  const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
+  return `<details class="stay ${full?"done":""}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
+  <div class="pchips">${people||'<span class="mut">No crew list on this mission.</span>'}</div>
+  <a class="btn sm" href="#/batch/${b.id}">Open this stay</a></details>`;
+}
 function tripPage(t){
   setHead(t.name,"#/");
-  const q=queue(t).length,lv=live(t);
-  const grid=lv.length?`<div class="card"><h2>What is in and what is missing</h2><div style="overflow-x:auto"><table class="mx"><tr><th>Person</th>${lv.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${lv.map(b=>{const m=missing(t,b).includes(x.p.id);return `<td class="${m?"n":"y"}">${m?"MISSING":"&#10003;"}</td>`}).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></div>`:"";
-  app.innerHTML=`<div class="card"><div class="row" style="gap:.6rem;flex-wrap:wrap;align-items:end;margin-bottom:.6rem"><label class="mut" style="flex:1;min-width:8rem">Start date<br><input type="date" id="sd" value="${esc(t.startDate||"")}" style="width:100%"></label><label class="mut" style="flex:1;min-width:8rem">End date<br><input type="date" id="ed" value="${esc(t.endDate||"")}" style="width:100%"></label></div><div class="row sp"><span class="mut">${t.members.length?t.members.length+" people on this mission":"No one yet. People are added as receipts are read."}</span><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div></div>${grid}
-  ${t.batches.map(b=>{const m=missing(t,b),n=t.members.length-m.length,full=!m.length;return `<a class="btn" href="#/batch/${b.id}" style="justify-content:space-between"><span>${esc(b.label)}: ${esc(hotel(b))}</span><span class="pill ${full?'ok':'bad'}">${n} of ${t.members.length}</span></a>`}).join("")||`<div class="card mut">No batches yet. Start one for your first hotel.</div>`}
-  <button class="btn pri" id="nb">+ New batch</button>
-  <a class="btn" href="#/review/${t.id}">Not sure whose these are ${q?`<span class="pill warn">${q}</span>`:""}</a>
-  <div style="height:1.5rem"></div>
-  <a class="btn pri" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">Aircraft Commander Review</a>${t.status==="sent"?'<button class="btn" id="reopen">Reopen mission</button>':""}
-  <div style="height:1.5rem"></div><button class="btn danger" id="delmission">Delete this mission</button>`;
+  const q=queue(t).length,st=stats(t);
+  const stays=[...t.batches].sort((x,y)=>stayKey(x)<stayKey(y)?-1:stayKey(x)>stayKey(y)?1:x.id-y.id);
+  const complete=stays.filter(b=>b.receipts.length&&!missing(t,b).length).length;
+  const lv=live(t);
+  const grid=lv.length>1?`<details class="card"><summary><b>Full grid (everyone, every stay)</b></summary><div style="overflow-x:auto;margin-top:.5rem"><table class="mx"><tr><th>Person</th>${lv.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${lv.map(b=>{const m=missing(t,b).includes(x.p.id);return `<td class="${m?"n":"y"}">${m?"MISSING":"&#10003;"}</td>`}).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></details>`:"";
+  app.innerHTML=`<div class="card"><div class="row sp"><div><b>${stays.length} stay${stays.length===1?"":"s"}</b> &middot; ${complete} complete</div><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div>
+  <div class="mut" style="margin:.2rem 0 .5rem">${st.miss?`<span class="miss">${st.miss} receipt${st.miss===1?"":"s"} still missing</span>`:(stays.length?"Nobody is missing anything":"No stays yet")}${datesTxt(t)?" &middot; "+datesTxt(t):""} &middot; ${t.members.length} people</div>
+  <div class="row" style="gap:.5rem;flex-wrap:wrap"><a class="btn sm" href="#/review/${t.id}">Not sure whose ${q?`<span class="pill warn">${q}</span>`:""}</a><a class="btn sm" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">AC Review</a></div></div>
+  <h2 style="margin:.9rem 0 .4rem">Hotel stays</h2>
+  ${stays.map(b=>stayCard(t,b)).join("")||'<div class="card mut">No stays yet. Start one for your first hotel.</div>'}
+  <button class="btn pri" id="nb">+ New hotel stay</button>
+  ${grid}
+  <details class="card"><summary><b>Mission dates</b></summary><div class="row" style="gap:.6rem;flex-wrap:wrap;align-items:end;margin-top:.5rem"><label class="mut" style="flex:1;min-width:8rem">Start date<br><input type="date" id="sd" value="${esc(t.startDate||"")}" style="width:100%"></label><label class="mut" style="flex:1;min-width:8rem">End date<br><input type="date" id="ed" value="${esc(t.endDate||"")}" style="width:100%"></label></div></details>
+  ${t.status==="sent"?'<button class="btn" id="reopen">Reopen mission</button>':""}
+  <div style="height:1rem"></div><button class="btn danger" id="delmission">Delete this mission</button>`;
   const saveDates=async()=>{const r=await api("/api/trip/"+t.id+"/dates",{startDate:$("#sd").value,endDate:$("#ed").value});if(!r.ok){toast(r.error||"Could not save dates.");return}await refresh();toast("Dates saved")};
   $("#sd").onchange=saveDates;$("#ed").onchange=saveDates;
   $("#delmission").onclick=async()=>{
