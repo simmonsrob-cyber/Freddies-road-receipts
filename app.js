@@ -5,8 +5,8 @@ let CODE="";try{CODE=localStorage.getItem("frr-code")||""}catch(e){}
 const U=p=>API+p+(CODE?(p.includes("?")?"&":"?")+"k="+encodeURIComponent(CODE):"");
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const PAGE="V30",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
-const HIST=[["V30","Page only","Tap or hover the 6 of 8 number for a done / missing popup, trip overview with who is missing"],["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
+const PAGE="V31",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
+const HIST=[["V31","Page only","Non-A button on each hotel row: pick the person, then upload or take photos"],["V30","Page only","Tap or hover the 6 of 8 number for a done / missing popup, trip overview with who is missing"],["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 async function api(path,body,method){
@@ -172,7 +172,7 @@ function stayCard(t,b){
   const subN=reqN?`<div class="sub"><span><b>Non Availability</b></span><span class="pill tap ${nOk?"ok":"bad"}" data-who="m${b.id}" data-have="${esc(t.members.filter(i=>nS.has(i)).map(i=>last(P(i))).join("|"))}" data-miss="${esc(t.members.filter(i=>!nS.has(i)).map(i=>last(P(i))).join("|"))}" role="button" tabindex="0">${t.members.filter(i=>nS.has(i)).length} of ${t.members.length}</span></div>`:"";
   const subT=tS.size?`<div class="sub"><span><b>Taxi</b> <span class="mut">${t.members.filter(i=>tS.has(i)).map(i=>esc(last(P(i)))).join(", ")}</span></span><span class="pill">${tS.size} filed</span></div>`:"";
   const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
-  return `<div class="staywrap"><details class="stay ${full?"done":""}" data-sid="${b.id}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
+  return `<div class="staywrap"><details class="stay ${full?"done":""}" data-sid="${b.id}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div><button type="button" class="btn sm nabtn" data-na="${b.id}">Non-A</button>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
   <div class="spanel" data-b="${b.id}"></div>${empty?`<div class="row" style="gap:.5rem"><button class="btn sm danger" data-delstay="${b.id}">Remove this empty stay</button></div>`:""}</details>${subN}${subT}</div>`;
 }
 function devFiles(t){
@@ -257,6 +257,14 @@ function tripPage(t){
       let target=stay;if(!target){const x=await api("/api/trip/"+t.id+"/extras",{});if(!x.ok)return toast(x.error||"Could not start.");await refresh();target=x.id}
       await upload({id:target},fs,g,who);L.innerHTML=""};
     $("#cf").onchange=go3;$("#cc").onchange=go3});
+  app.querySelectorAll("[data-na]").forEach(bt=>bt.onclick=e=>{e.preventDefault();e.stopPropagation();
+    const b=TRIP(t.id).batches.find(x=>x.id==bt.dataset.na)||t.batches.find(x=>x.id==bt.dataset.na),L=$("#layer"),h=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));let who=0;
+    L.innerHTML=`<div class="modal"><div class="sheet"><h2>Non Availability</h2><div class="mut">${esc(hotel(b)||b.label)}. Tap the person, then add the receipt. A check means that person already has one.</div><div class="pchips">${t.members.map(id=>`<button type="button" class="pchip pick ${h.has(id)?"y":""}" data-w="${id}">${h.has(id)?"&#10003; ":""}${esc(P(id).name)}</button>`).join("")}</div><div class="mut" id="wsel">Pick a name first.</div><button class="btn pri" id="npk" disabled>Add from library or files</button><button class="btn" id="nsh" disabled>Take photo</button><input type="file" id="nf" ${FA} multiple hidden><input type="file" id="nc" accept="image/*" capture="environment" hidden><button class="btn" id="ncl">Close</button></div></div>`;
+    $("#ncl").onclick=()=>L.innerHTML="";
+    L.querySelectorAll("[data-w]").forEach(el=>el.onclick=()=>{who=+el.dataset.w;L.querySelectorAll("[data-w]").forEach(x=>x.classList.toggle("sel",x===el));$("#wsel").textContent="Adding for "+P(who).name;$("#npk").disabled=$("#nsh").disabled=false});
+    $("#npk").onclick=()=>$("#nf").click();$("#nsh").onclick=()=>$("#nc").click();
+    const go=async ev=>{const fs=[...ev.target.files];ev.target.value="";if(!fs.length||!who)return;await upload({id:b.id},fs,NONA,who);L.innerHTML=""};
+    $("#nf").onchange=go;$("#nc").onchange=go});
   app.querySelectorAll("[data-delstay]").forEach(bt=>bt.onclick=async()=>{if(!confirm("Remove this empty stay?"))return;const r=await api("/api/batch/"+bt.dataset.delstay+"/delete",{});if(!r.ok)return toast(r.error||"Could not remove.");await refresh();tripPage(TRIP(t.id))});
   const ro=$("#reopen");if(ro)ro.onclick=async()=>{await api("/api/trip/"+t.id+"/status",{status:"open"});await refresh();tripPage(TRIP(t.id));toast("Mission reopened")};
 }
