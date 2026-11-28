@@ -98,3 +98,6 @@ header.top h1{text-align:center}
 .catbox{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:56px;margin-top:.6rem;padding:.6rem .9rem;border-radius:.8rem;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;cursor:pointer;text-align:left}
 
 .pchip.pick{font:inherit;cursor:pointer;color:var(--fg);background:var(--card);border:1px solid var(--line)}.pchip.pick.y{border-color:var(--ok,#2e9e5b)}.pchip.pick.sel{outline:2px solid var(--pri,#2a6fdb);font-weight:700}.btn:disabled{opacity:.45}
+.vbar{font-size:.8rem;text-align:center;padding:.35rem .6rem;border-bottom:1px solid var(--line)}.vbar.ok{background:var(--okbg);color:var(--ok)}.vbar.bad{background:var(--warnbg);color:var(--warn);font-size:.9rem;padding:.6rem}.vbar.unk{color:var(--mut)}
+.pill.tap{cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:3.2rem;text-align:center}.wholist{margin:.4rem .2rem 0}.wholist[hidden]{display:none}
+.sub{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin:.35rem 0 0 1.4rem;padding:.35rem .7rem;font-size:.85rem;border:1px solid var(--line);border-left:3px solid var(--mut);border-radius:.6rem;background:var(--card)}
