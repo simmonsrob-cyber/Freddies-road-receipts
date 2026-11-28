@@ -1,0 +1,10 @@
+flask
+gunicorn
+python-dotenv
+numpy
+opencv-python-headless
+pillow
+pytesseract
+rapidfuzz
+img2pdf
+reportlab
