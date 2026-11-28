@@ -5,7 +5,8 @@ let CODE="";try{CODE=localStorage.getItem("frr-code")||""}catch(e){}
 const U=p=>API+p+(CODE?(p.includes("?")?"&":"?")+"k="+encodeURIComponent(CODE):"");
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const PAGE="V26";const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
+const PAGE="V27",PI_NEEDS="V25";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
+const HIST=[["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 async function api(path,body,method){
@@ -23,7 +24,7 @@ function loginScreen(msg){
   const go2=()=>{CODE=$("#pc").value.trim();try{localStorage.setItem("frr-code",CODE)}catch(e){}nav()};
   $("#pcb").onclick=go2;$("#pc").onkeydown=e=>{if(e.key==="Enter")go2()};
 }
-const openStays=new Set();let S={roster:[],tags:[],trips:[]},busy=0,selTag=null,shrinkOn=true;
+const openStays=new Set();let S={roster:[],tags:[],trips:[]},busy=0,selTag=null,shrinkOn=true;   // big photos are always shrunk before sending
 const P=id=>S.roster.find(p=>p.id===id)||{id,name:"?"};
 const last=p=>p.name.split(" ").slice(-1)[0];
 const FA='accept="image/*,application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"';const HOTEL="Hotel",NONA="NONA";
@@ -62,12 +63,19 @@ const app=$("#app"),titleEl=$("#title"),backBtn=$("#back");let backTo=null;
 const go=h=>{location.hash=h};
 backBtn.onclick=()=>backTo&&go(backTo);
 function setHead(title,back){titleEl.textContent=title;backTo=back;backBtn.style.display=back?"":"none"}
+function verBar(){
+  let bar=document.getElementById("vbar");
+  if(!bar){bar=document.createElement("div");bar.id="vbar";document.querySelector("header.top").after(bar)}
+  const pi=S.version||"",ok=pi&&vnum(pi)>=vnum(PI_NEEDS);
+  bar.className="vbar "+(!pi?"unk":ok?"ok":"bad");
+  bar.innerHTML=!pi?`Page <b>${PAGE}</b> &middot; Pi version unknown`:ok?`Page <b>${PAGE}</b> &middot; Pi <b>${esc(pi)}</b> &middot; &#10003; no Pi update needed`:`Page <b>${PAGE}</b> &middot; Pi <b>${esc(pi)}</b> &middot; <b>Pi update needed</b> (this page needs Pi ${PI_NEEDS} or newer)`;
+}
 async function render(){
   const [,page,id]=(location.hash||"#/").split("/");
   const t=TRIP(id);
   const pages={"":home,dev:devPage,roster:rosterPage,newtrip:()=>newTrip(),trip:()=>t?tripPage(t):home(),batch:()=>batchPage(id),review:()=>t?reviewPage(t):home(),ac:()=>t?acPage(t):home()};
   (pages[page||""]||home)();
-  if(S.version&&vnum(S.version)<vnum(PAGE)&&page!=="dev")app.insertAdjacentHTML("afterbegin",`<div class="card" style="border-color:var(--warn)"><b class="miss">The Pi is on ${esc(S.version)}, this page is ${PAGE}.</b><div class="mut">Some buttons will not work until the Pi is updated. Run the latest install on the Pi.</div></div>`);
+  verBar();
 }
 async function nav(){await refresh();if(needLogin){loginScreen(CODE?"That passcode did not work. Try again.":"");return}await render();window.scrollTo(0,0)}
 window.addEventListener("hashchange",nav);
@@ -176,7 +184,7 @@ function devPage(){
   app.innerHTML=`<div class="card"><b>Dev tools</b> <span class="mut">page ${PAGE} &middot; server ${esc(S.version||"?")}</span></div>
   <details class="fold" open><summary>&#128193; Missions <span class="mut">${act.length}</span></summary>${act.map(t=>`<details class="fold sub"><summary>&#128193; ${esc(t.name)}</summary>${devFiles(t)}</details>`).join("")||'<div class="mut" style="margin-left:1rem">None.</div>'}</details>
   <details class="fold"><summary>&#128274; Archived <span class="mut">${arc.length}</span></summary>${arc.map(t=>`<div class="card"><div><b>${esc(t.name)}</b></div><div class="mut">Removed ${esc((t.archivedAt||"").slice(0,10))}</div><details class="fold sub"><summary>&#128193; Files</summary>${devFiles(t)}</details><div class="row" style="gap:.5rem;margin-top:.5rem"><button class="btn sm pri" data-restore="${t.id}">Restore</button><button class="btn sm danger" data-purge="${t.id}">Erase forever</button></div></div>`).join("")||'<div class="mut" style="margin-left:1rem">Nothing archived.</div>'}</details>
-  <details class="fold"><summary>&#9881; System</summary><div class="card"><div class="mut">Pi address: ${esc(API||location.origin)}</div><div class="mut">Server version: ${esc(S.version||"?")}</div><button class="btn sm" id="signout">Forget the passcode on this phone</button></div></details>`;
+  <details class="fold"><summary>&#9881; System</summary><div class="card"><div class="mut">Pi address: ${esc(API||location.origin)}</div><div class="mut">Server version: ${esc(S.version||"?")}</div><div class="mut">This page needs the Pi on ${PI_NEEDS} or newer.</div><div class="who" style="margin-top:.6rem">Which versions need a Pi update</div>${HIST.map(h=>`<div class="mut"><b>${h[0]}</b> &middot; ${h[1]==='Page only'?'page only, no Pi update':'<b>Pi update needed</b>'} &middot; ${esc(h[2])}</div>`).join("")}<button class="btn sm" id="signout">Forget the passcode on this phone</button></div></details>`;
   app.querySelectorAll("[data-vr]").forEach(bt=>bt.onclick=()=>viewer(findR(bt.dataset.vr)));
   app.querySelectorAll("[data-restore]").forEach(bt=>bt.onclick=async()=>{const r=await api("/api/trip/"+bt.dataset.restore+"/restore",{});if(!r.ok)return toast(r.error||"Could not restore.");toast("Mission restored");await refresh();devPage()});
   app.querySelectorAll("[data-purge]").forEach(bt=>bt.onclick=async()=>{const t=TRIP(bt.dataset.purge);
@@ -254,7 +262,6 @@ function stayPanel(t,b){
    <input type="file" class="files" ${FA} multiple hidden><input type="file" class="cam" accept="image/*" capture="environment" hidden>
    <button class="btn pri pick">Add receipts from library or files (photos, PDF, Word)</button><button class="btn shoot">Take photo</button>
    <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then Hotel.</div>
-   <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" class="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
    <div class="prog-box"></div></div>
   <div class="card"><h2>Non Availability</h2>
    <label class="row" style="gap:.6rem;min-height:44px"><input type="checkbox" class="nreq" ${req?"checked":""} ${anyN?"disabled":""}> <span>Non Availability required for this stay</span></label>
@@ -271,7 +278,6 @@ function fillStay(box){
   const meta=()=>api("/api/batch/"+b.id+"/meta",{hotel:q(".hn").value,date:q(".dt").value});
   q(".sv").onclick=async()=>{await meta();await refresh();toast("Saved");tripPage(TRIP(t.id))};
   q(".sret").onclick=async()=>{const hv=q(".hn").value,dv=q(".dt").value;if(hv!==(b.hotelFinal||b.hotelGuess)||dv!==(b.dateFinal||b.dateGuess))await meta();openStays.delete(b.id);await refresh();toast("Saved");tripPage(TRIP(t.id));window.scrollTo(0,0)};
-  q(".shr").onchange=e=>shrinkOn=e.target.checked;
   const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,HOTEL,0,prog)};
   q(".pick").onclick=()=>q(".files").click();q(".shoot").onclick=()=>q(".cam").click();
   q(".files").onchange=fromInput;q(".cam").onchange=fromInput;
@@ -393,12 +399,11 @@ function viewer(r){
 }
 function cropModal(r){
   if(!r)return;
-  const L=$("#layer");L.innerHTML=`<div class="modal"><div class="sheet"><h2>Fix the crop</h2><div class="mut">Drag the four corners to the edges of the paper, then re-scan.</div>
+  const L=$("#layer");L.innerHTML=`<div class="modal"><div class="sheet"><h2>Receipt</h2>
+  <div class="mut">Filed under (type to change):</div><input type="text" id="mvn" list="dl2" value="${esc(r.pid?P(r.pid).name:"")}">${dlist("dl2")}<div class="row" style="gap:.5rem"><button class="btn pri" id="mv" style="flex:1">Save name</button><button class="btn" id="cl" style="flex:1">Close</button></div>
   <div class="cropbox" id="cb"><img src="${U("/img/"+r.id+"?orig=1")}" alt=""><svg><polygon id="pg" fill="rgba(76,141,255,.15)" stroke="#4c8dff" stroke-width="3"/></svg></div>
-  <button class="btn pri" id="ap">Re-scan with this crop</button>
-  <div class="mut" style="margin-top:.8rem">Filed under (type to change):</div><input type="text" id="mvn" list="dl2" value="${esc(r.pid?P(r.pid).name:"")}">${dlist("dl2")}<button class="btn" id="mv">Save name</button>
-  <button class="btn danger" id="rm">Delete this receipt</button>
-  <button class="btn" id="cl">Close</button></div></div>`;
+  <div class="mut">To fix the crop, drag the four corners to the edges of the paper, then re-scan.</div><button class="btn" id="ap">Re-scan with this crop</button>
+  <button class="btn danger" id="rm">Delete this receipt</button></div></div>`;
   const cb=$("#cb"),img=$("img",cb);let pts=[[.1,.1],[.9,.1],[.9,.9],[.1,.9]],hs=[];
   const draw=()=>{const w=cb.clientWidth,h=cb.clientHeight;$("#pg").setAttribute("points",pts.map(p=>p[0]*w+","+p[1]*h).join(" "));hs.forEach((e,i)=>{e.style.left=pts[i][0]*w+"px";e.style.top=pts[i][1]*h+"px"})};
   pts.forEach((p,i)=>{const e=document.createElement("div");e.className="handle";cb.appendChild(e);hs.push(e);
