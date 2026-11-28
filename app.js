@@ -38,7 +38,9 @@ const queue=t=>t.batches.flatMap(b=>b.receipts.filter(r=>r.status==="needs_revie
 const hotel=b=>b.hotelFinal||b.hotelGuess||b.label;
 const dateTxt=b=>{const d=b.dateFinal||b.dateGuess;if(!d)return"";return new Date(d+"T12:00").toLocaleDateString(undefined,{month:"short",day:"numeric"})};
 const bLabel=b=>hotel(b)+(dateTxt(b)?` (${dateTxt(b)})`:"");
-const live=t=>t.batches.filter(b=>b.receipts.length);
+const live=t=>t.batches.filter(b=>b.receipts.length&&b.kind!=="extras");
+const hotels=t=>t.batches.filter(b=>b.kind!=="extras");
+const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
 function report(t){return t.members.map(id=>({p:P(id),miss:live(t).filter(b=>missing(t,b).includes(id))})).sort((a,b)=>b.miss.length-a.miss.length)}
 function stats(t){let miss=0,bats=0;live(t).forEach(b=>{bats++;miss+=missing(t,b).length});return{miss,bats,q:queue(t).length}}
 const kb=n=>n>=1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
@@ -84,7 +86,7 @@ function mcard(t){
   const st=stats(t);
   const pill=!st.bats?'<span class="pill warn">No receipts yet</span>':st.miss?`<span class="pill bad">${st.miss} missing</span>`:'<span class="pill ok">Complete</span>';
   return `<a class="mcard" href="#/trip/${t.id}"><div class="row sp"><b>${esc(t.name)}</b>${pill}</div>
-  <div class="mut">${datesTxt(t)?datesTxt(t)+" &middot; ":""}${t.members.length} people &middot; ${t.batches.length} hotel batch${t.batches.length===1?"":"es"}${st.q?` &middot; <span style="color:var(--warn);font-weight:700">${st.q} to review</span>`:""}</div></a>`;
+  <div class="mut">${datesTxt(t)?datesTxt(t)+" &middot; ":""}${t.members.length} people &middot; ${hotels(t).length} hotel${hotels(t).length===1?"":"s"}${st.q?` &middot; <span style="color:var(--warn);font-weight:700">${st.q} to review</span>`:""}</div></a>`;
 }
 function home(){
   setHead("Freddie's Road Receipts",null);
@@ -156,39 +158,42 @@ function stayCard(t,b){
   const pill=empty?'<span class="pill warn">No receipts yet</span>':`<span class="pill ${full?"ok":"bad"}">${n} of ${t.members.length}${full?" &#10003;":""}</span>`;
   const have=present(b);
   const people=t.members.map(id=>`<span class="pchip ${have.has(id)?"y":"n"}">${have.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("");
-  return `<details class="stay ${full?"done":""}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
+  const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));
+  const nm=t.members.filter(id=>!nh.has(id));
+  const nsub=`<div class="nsub"><div class="row sp"><label class="chk" style="min-height:36px"><input type="checkbox" data-nreq="${b.id}" ${b.nonaRequired?"checked":""}> <span>Non Availability required</span></label>${b.nonaRequired?`<span class="pill ${nm.length?"bad":"ok"}">${t.members.length-nm.length} of ${t.members.length}</span>`:""}</div>${b.nonaRequired?`<div class="pchips">${t.members.map(id=>`<span class="pchip ${nh.has(id)?"y":"n"}">${nh.has(id)?"&#10003;":"&#10007;"} ${esc(last(P(id)))}</span>`).join("")}</div>`:""}</div>`;
+  return `<div class="staywrap"><details class="stay ${full?"done":""}"><summary><div class="row sp"><div><b>${esc(hotel(b)||b.label)}</b><div class="mut">${esc(dateTxt(b)||"No date yet")} &middot; ${esc(b.label)}</div></div>${pill}</div><div class="prog"><i style="width:${pc}%;background:${full?"var(--ok)":"var(--warn)"}"></i></div></summary>
   <div class="pchips">${people||'<span class="mut">No crew list on this mission.</span>'}</div>
-  <div class="row" style="gap:.5rem"><a class="btn sm pri" href="#/batch/${b.id}">${empty?"Add receipts":"Open this stay"}</a>${empty?`<button class="btn sm danger" data-delstay="${b.id}">Remove</button>`:""}</div></details>`;
+  <div class="row" style="gap:.5rem"><a class="btn sm pri" href="#/batch/${b.id}">${empty?"Add receipts":"Open this stay"}</a>${empty?`<button class="btn sm danger" data-delstay="${b.id}">Remove</button>`:""}</div></details>${nsub}</div>`;
 }
 function stayModal(t){
-  const L=$("#layer");let rows=[["",""],["",""]];
-  const draw=()=>{L.innerHTML=`<div class="modal"><div class="sheet"><h2>Add hotel stays</h2><div class="mut">Name the hotels now and add receipts later. The date is optional.</div>${rows.map((r,i)=>`<div class="row" style="gap:.4rem;margin-top:.5rem"><input type="text" data-hn="${i}" placeholder="Hotel name" value="${esc(r[0])}" style="flex:2"><input type="date" data-hd="${i}" value="${esc(r[1])}" style="flex:1"></div>`).join("")}<button class="btn sm" id="more" style="margin-top:.5rem">+ Another hotel</button><button class="btn pri" id="ssv">Save stays</button><button class="btn" id="sgo">Save and add receipts to the first one</button><button class="btn" id="scl">Cancel</button></div></div>`;
-    const keep=()=>{L.querySelectorAll("[data-hn]").forEach(e=>rows[+e.dataset.hn][0]=e.value);L.querySelectorAll("[data-hd]").forEach(e=>rows[+e.dataset.hd][1]=e.value)};
-    $("#more").onclick=()=>{keep();rows.push(["",""]);draw()};
-    $("#scl").onclick=()=>L.innerHTML="";
-    const save=async first=>{keep();const todo=rows.filter(r=>r[0].trim());if(!todo.length)return toast("Type at least one hotel name");let firstId=null;
-      for(const r of todo){const b=await api("/api/trip/"+t.id+"/batch",{});if(!b.ok)return toast(b.error||"Could not add.");if(!firstId)firstId=b.id;await api("/api/batch/"+b.id+"/meta",{hotel:r[0].trim(),date:r[1]})}
-      L.innerHTML="";await refresh();toast(todo.length+" stay"+(todo.length===1?"":"s")+" saved");if(first)go("#/batch/"+firstId);else tripPage(TRIP(t.id))};
-    $("#ssv").onclick=()=>save(false);$("#sgo").onclick=()=>save(true);
-  };draw();
+  const L=$("#layer");
+  L.innerHTML=`<div class="modal"><div class="sheet"><h2>Add hotel</h2><input type="text" id="hn1" placeholder="Hotel name" autocomplete="off"><div style="height:.5rem"></div><label class="mut">Date<br><input type="date" id="hd1" value="${todayStr()}" style="width:100%"></label><button class="btn pri" id="sgo">Save and upload receipts</button><button class="btn" id="ssv">Save hotel only (upload later)</button><button class="btn" id="scl">Cancel</button></div></div>`;
+  $("#scl").onclick=()=>L.innerHTML="";
+  const save=async go2=>{const n=$("#hn1").value.trim();if(!n)return toast("Type the hotel name");
+    const b=await api("/api/trip/"+t.id+"/batch",{});if(!b.ok)return toast(b.error||"Could not add.");
+    await api("/api/batch/"+b.id+"/meta",{hotel:n,date:$("#hd1").value});
+    L.innerHTML="";await refresh();if(go2)go("#/batch/"+b.id);else{toast("Hotel saved");tripPage(TRIP(t.id))}};
+  $("#sgo").onclick=()=>save(true);$("#ssv").onclick=()=>save(false);
+  setTimeout(()=>{const e=$("#hn1");e&&e.focus()},50);
 }
 function tripPage(t){
   setHead(t.name,"#/");
   const q=queue(t).length,st=stats(t);
-  const stays=[...t.batches].sort((x,y)=>stayKey(x)<stayKey(y)?-1:stayKey(x)>stayKey(y)?1:x.id-y.id);
+  const stays=hotels(t).sort((x,y)=>stayKey(x)<stayKey(y)?-1:stayKey(x)>stayKey(y)?1:x.id-y.id);
   const complete=stays.filter(b=>b.receipts.length&&!missing(t,b).length).length;
   const lv=live(t);
-  const CATS=["Taxi",NONA,"CNA"];
+  const CATS=["Taxi","CNA"],OPT=["Taxi"];
   const catSet=g=>new Set(t.batches.flatMap(b=>b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===g).map(r=>r.pid)));
-  const cats=t.members.length?`<div class="cats" id="cats">${CATS.map(g=>{const h=catSet(g),n=t.members.filter(id=>h.has(id)).length,ok=n===t.members.length;return `<button class="cat ${ok?"ok":""}" data-cat="${esc(g)}"><span>${esc(TL(g))}</span><b>${n}/${t.members.length}</b></button>`}).join("")}</div>`:"";
+  const cats=t.members.length?`<div class="cats" id="cats">${CATS.map(g=>{const h=catSet(g),n=t.members.filter(id=>h.has(id)).length,ok=n===t.members.length;const op=OPT.includes(g);return `<button class="cat ${op?"opt":(ok?"ok":"")}" data-cat="${esc(g)}"><span>${esc(TL(g))}${op?" (optional)":""}</span><b>${op?n:n+"/"+t.members.length}</b></button>`}).join("")}</div>`:"";
   const nona="";
   const grid=lv.length>1?`<details class="card"><summary><b>Full grid (everyone, every stay)</b></summary><div style="overflow-x:auto;margin-top:.5rem"><table class="mx"><tr><th>Person</th>${lv.map(b=>`<th>${esc(hotel(b))}<br>${esc(dateTxt(b))}</th>`).join("")}</tr>${report(t).map(x=>`<tr><td>${esc(x.p.name)}</td>${lv.map(b=>{const m=missing(t,b).includes(x.p.id);return `<td class="${m?"n":"y"}">${m?"MISSING":"&#10003;"}</td>`}).join("")}</tr>`).join("")}</table></div><div class="mut" style="margin-top:.4rem">Counts hotel receipts only.</div></details>`:"";
-  app.innerHTML=`${cats}<div class="card"><div class="row sp"><div><b>${stays.length} stay${stays.length===1?"":"s"}</b> &middot; ${complete} complete</div><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div>
+  app.innerHTML=`<div class="card"><div class="row sp"><div><b>${stays.length} stay${stays.length===1?"":"s"}</b> &middot; ${complete} complete</div><span class="pill ${t.status==="sent"?"ok":"warn"}">${t.status==="sent"?"Sent":"Open"}</span></div>
   <div class="mut" style="margin:.2rem 0 .5rem">${st.miss?`<span class="miss">${st.miss} receipt${st.miss===1?"":"s"} still missing</span>`:(stays.length?"Nobody is missing anything":"No stays yet")}${datesTxt(t)?" &middot; "+datesTxt(t):""} &middot; ${t.members.length} people</div>
   <div class="row" style="gap:.5rem;flex-wrap:wrap"><a class="btn sm" href="#/review/${t.id}">Not sure whose ${q?`<span class="pill warn">${q}</span>`:""}</a><a class="btn sm" href="#/ac/${t.id}" style="background:#0b6b3a;border-color:#0b6b3a;color:#fff">AC Review</a></div></div>
+  ${cats}
   <h2 style="margin:.9rem 0 .4rem">Hotel stays</h2>
   ${stays.map(b=>stayCard(t,b)).join("")||'<div class="card mut">No stays yet. Start one for your first hotel.</div>'}
-  <button class="btn pri" id="nb">+ Add hotel stays</button>
+  <button class="btn pri" id="nb">Add hotel and upload receipts</button>
   ${nona}
   ${grid}
   <details class="card"><summary><b>Mission dates</b></summary><div class="row" style="gap:.6rem;flex-wrap:wrap;align-items:end;margin-top:.5rem"><label class="mut" style="flex:1;min-width:8rem">Start date<br><input type="date" id="sd" value="${esc(t.startDate||"")}" style="width:100%"></label><label class="mut" style="flex:1;min-width:8rem">End date<br><input type="date" id="ed" value="${esc(t.endDate||"")}" style="width:100%"></label></div></details>
@@ -204,10 +209,16 @@ function tripPage(t){
     toast("Mission deleted");await refresh();go("#/");
   };
   $("#nb").onclick=()=>stayModal(t);
+  app.querySelectorAll("[data-nreq]").forEach(cb=>cb.onchange=async()=>{const r=await api("/api/batch/"+cb.dataset.nreq+"/nona",{required:cb.checked});if(!r.ok)toast(r.error||"Could not save.");await refresh();tripPage(TRIP(t.id))});
   const ch=$("#cats");if(ch)ch.style.top=(document.querySelector("header.top").offsetHeight)+"px";
   app.querySelectorAll("[data-cat]").forEach(bt=>bt.onclick=()=>{const g=bt.dataset.cat,h=catSet(g),L=$("#layer");
-    L.innerHTML=`<div class="modal"><div class="sheet"><h2>${esc(TL(g))}</h2><div class="mut">Upload these inside any hotel stay and pick the <b>${esc(TL(g))}</b> tag. Green means a receipt is filed.</div><div class="pchips">${t.members.map(id=>`<span class="pchip ${h.has(id)?"y":"n"}">${h.has(id)?"&#10003;":"&#10007;"} ${esc(P(id).name)}</span>`).join("")}</div><button class="btn" id="ccl">Close</button></div></div>`;
-    $("#ccl").onclick=()=>L.innerHTML=""});
+    L.innerHTML=`<div class="modal"><div class="sheet"><h2>${esc(TL(g))}</h2><div class="mut">Add the receipts here. Green means a receipt is filed.</div><div class="pchips">${t.members.map(id=>`<span class="pchip ${h.has(id)?"y":"n"}">${h.has(id)?"&#10003;":"&#10007;"} ${esc(P(id).name)}</span>`).join("")}</div><button class="btn pri" id="cpk">Add receipts with photo library</button><button class="btn" id="csh">Take photo</button><input type="file" id="cf" accept="image/*" multiple hidden><input type="file" id="cc" accept="image/*" capture="environment" hidden><div id="prog"></div><button class="btn" id="ccl">Close</button></div></div>`;
+    $("#ccl").onclick=()=>L.innerHTML="";
+    $("#cpk").onclick=()=>$("#cf").click();$("#csh").onclick=()=>$("#cc").click();
+    const go3=async e=>{const fs=[...e.target.files];e.target.value="";if(!fs.length)return;
+      const x=await api("/api/trip/"+t.id+"/extras",{});if(!x.ok)return toast(x.error||"Could not start.");await refresh();
+      await upload({id:x.id},fs,g);L.innerHTML=""};
+    $("#cf").onchange=go3;$("#cc").onchange=go3});
   app.querySelectorAll("[data-delstay]").forEach(bt=>bt.onclick=async()=>{if(!confirm("Remove this empty stay?"))return;const r=await api("/api/batch/"+bt.dataset.delstay+"/delete",{});if(!r.ok)return toast(r.error||"Could not remove.");await refresh();tripPage(TRIP(t.id))});
   const ro=$("#reopen");if(ro)ro.onclick=async()=>{await api("/api/trip/"+t.id+"/status",{status:"open"});await refresh();tripPage(TRIP(t.id));toast("Mission reopened")};
 }
@@ -220,13 +231,11 @@ function batchPage(id){
   ${pr?`<div class="card">Reading ${pr} receipt${pr>1?"s":""}… this page updates by itself.</div>`:""}
   ${m.length&&b.receipts.length?`<div class="card"><b class="miss">Missing:</b> ${m.map(i=>`<span class="miss">${esc(P(i).name)}</span>`).join(", ")}</div>`:""}
   <div class="drop">
-   <div class="step"><b>1.</b> Pick a tag</div>
-   <div class="chips">${tagsSorted().map(g=>`<button class="chip ${g===selTag?"sel":""}" data-g="${esc(g)}">${esc(TL(g))}</button>`).join("")}<button class="chip" id="newtag">+ New</button></div>
-   <div id="newrow" style="display:none" class="row"><input type="text" id="ntn" placeholder="New tag name" style="flex:1"><button class="btn sm pri" id="ntok">Add</button></div>
-   <div class="step"><b>2.</b> Add receipts</div><div class="dd mut">On a computer you can also drag photos onto this box.</div>
+   <div class="step"><b>Add receipts</b></div><div class="dd mut">On a computer you can also drag photos onto this box.</div>
    <input type="file" id="files" accept="image/*" multiple hidden><input type="file" id="cam" accept="image/*" capture="environment" hidden>
    <button class="btn pri" id="pick">Add receipts with photo library</button><button class="btn" id="shoot">Take photo</button>
-   <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then the tag.</div>
+   <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" accept="image/*" multiple hidden>
+   <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then Hotel.</div>
    <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" id="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
    <div id="prog"></div></div>
   <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
@@ -234,15 +243,13 @@ function batchPage(id){
    <button class="btn" id="sv">Save</button></div>
   ${Object.keys(byP).length?`<div class="card"><h2>Filed receipts</h2>${t.members.filter(i=>byP[i]).map(i=>`<div class="who">${esc(P(i).name)}</div><div class="grid">${byP[i].map(r=>`<div><button class="thumb" data-r="${r.id}" style="width:100%"><img src="${U(r.img)}" alt="">${r.inferred?'<span class="tag">guessed by elimination</span>':""}</button><div class="cap">${esc(fname(t,r))}</div></div>`).join("")}</div>`).join("")}</div>`:""}`;
   $("#sv").onclick=async()=>{await api("/api/batch/"+b.id+"/meta",{hotel:$("#hn").value,date:$("#dt").value});await refresh();toast("Saved");batchPage(id)};
-  const needTag=()=>{if(!selTag){toast("Pick a tag first (step 1)");return false}return true};
-  app.querySelectorAll("[data-g]").forEach(c=>c.onclick=()=>{selTag=c.dataset.g;batchPage(id)});
-  $("#newtag").onclick=()=>{$("#newrow").style.display="flex";$("#ntn").focus()};
-  $("#ntok").onclick=async()=>{const r=await api("/api/tag",{name:$("#ntn").value});if(!r.ok)return toast(r.error);selTag=r.name;await refresh();batchPage(id)};
+  selTag=HOTEL;const needTag=()=>true;
   $("#shr").onchange=e=>shrinkOn=e.target.checked;
   const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,selTag)};
   $("#pick").onclick=()=>needTag()&&$("#files").click();
   $("#shoot").onclick=()=>needTag()&&$("#cam").click();
   $("#files").onchange=fromInput;$("#cam").onchange=fromInput;
+  $("#npick").onclick=()=>$("#nfiles").click();$("#nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA)};
   // drag and drop (computers)
   const dz=$(".drop");
   ["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over")}));
