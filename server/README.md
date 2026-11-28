@@ -1,4 +1,4 @@
-# Freddie's Road Receipts (V24)
+# Freddie's Road Receipts (V25)
 
 Phone photos of receipts in, cleaned scans out, filed per person, with a live "who is missing" board and an
 Aircraft Commander Review that emails a small zip. Runs on a Raspberry Pi. No cloud services.
