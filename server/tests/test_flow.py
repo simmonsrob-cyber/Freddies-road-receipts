@@ -320,3 +320,38 @@ def test_passcode_and_cors(monkeypatch):
     assert ok.headers["Access-Control-Allow-Origin"] == o["Origin"]
     bad = c.get("/api/state", headers={"Origin": "https://evil.example", "X-Code": "s3cret-code"})
     assert "Access-Control-Allow-Origin" not in bad.headers                 # other sites get no CORS permission
+
+
+def test_pdf_and_word_uploads(client, tmp_path):
+    import img2pdf
+    import docx
+    tid = client.post("/api/trip", json={"name": "Docs", "members": []}).get_json()["id"]
+    b = client.post(f"/api/trip/{tid}/batch", json={}).get_json()["id"]
+    pdf = tmp_path / "r.pdf"
+    pdf.write_bytes(img2pdf.convert(str(jpg(tmp_path, "SMITH, JOHN"))))
+    d = docx.Document()
+    d.add_paragraph("HAMPTON INN AND SUITES")
+    d.add_paragraph("Guest: DOE, JANE")
+    d.add_paragraph("Departure 03/05/2026")
+    dx = tmp_path / "r.docx"
+    d.save(str(dx))
+    bad = tmp_path / "x.pdf"
+    bad.write_bytes(b"not a pdf at all")
+    r = post_files(client, b, [pdf, dx, bad])
+    assert r["ok"] and len(r["ids"]) == 2 and len(r["errors"]) == 1          # bad file reported, the others filed
+    drain()
+    got = next(x for x in st(client)["trips"] if x["id"] == tid)["batches"][0]["receipts"]
+    assert len(got) == 2 and all(x["status"] != "processing" for x in got)
+
+
+def test_upload_for_chosen_person(client, tmp_path):
+    pid = client.post("/api/person", json={"name": "Brown, Tom"}).get_json()["id"]
+    tid = client.post("/api/trip", json={"name": "Pick", "members": [pid]}).get_json()["id"]
+    e = client.post(f"/api/trip/{tid}/extras", json={}).get_json()["id"]
+    r = post_files(client, e, [jpg(tmp_path, "SOMEONE ELSE")], tag="Taxi")
+    # same call with an explicit person: filed under that person whatever the OCR reads
+    data = {"tag": "Taxi", "person_id": str(pid), "files": [(open(jpg(tmp_path, "SOMEONE ELSE"), "rb"), "t.jpg")]}
+    r = client.post(f"/api/batch/{e}/upload", data=data, content_type="multipart/form-data").get_json()
+    drain()
+    rec = [x for x in next(x for x in st(client)["trips"] if x["id"] == tid)["batches"][0]["receipts"] if x["id"] == r["ids"][0]][0]
+    assert rec["pid"] == pid and rec["status"] == "confirmed" and rec["tag"] == "Taxi"
