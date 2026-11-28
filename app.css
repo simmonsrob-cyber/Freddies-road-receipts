@@ -89,3 +89,8 @@ a.lnk{color:var(--pri);text-decoration:none;font-weight:600}
 .nsub{margin:.25rem 0 0 1.2rem;padding:.2rem .7rem;border-left:3px solid var(--line)}
 .nsub .pchips{margin:.2rem 0 .4rem}
 .cat.opt{border-color:var(--line);background:var(--card);color:var(--fg)}
+#ver{cursor:pointer}
+.fold{background:var(--card);border:1px solid var(--line);border-radius:.8rem;padding:.5rem .8rem;margin-bottom:.5rem}
+.fold>summary{cursor:pointer;font-weight:700;min-height:36px;display:flex;align-items:center;gap:.4rem}
+.fold.sub{margin:.4rem 0 .2rem 1rem;background:var(--bg)}
+.file{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font:inherit;font-size:.9rem;padding:.5rem .2rem;cursor:pointer}
