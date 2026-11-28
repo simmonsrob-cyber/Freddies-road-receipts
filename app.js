@@ -5,8 +5,8 @@ let CODE="";try{CODE=localStorage.getItem("frr-code")||""}catch(e){}
 const U=p=>API+p+(CODE?(p.includes("?")?"&":"?")+"k="+encodeURIComponent(CODE):"");
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const PAGE="V28",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
-const HIST=[["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
+const PAGE="V29",PI_NEEDS="V28";   // PI_NEEDS: oldest Pi version this page works with. Only raise it when a release changes the Pi.
+const HIST=[["V29","Page only","Upload progress and a who-was-it check shown on screen"],["V28","Pi update needed","Crop outline starts on the detected paper edges. CNA removed, taxis can attach to a hotel"],["V27","Page only","Shrink is automatic, receipt window layout, version bar"],["V26","Page only","Stays open in place. (The V26 Pi zip only changed the version number.)"],["V25","Pi update needed","PDF and Word uploads, pick the person for Taxi and CNA"],["V24","Pi update needed","Non Availability and archive changes"],["V23","Pi update needed","Dev tools, archived missions, Taxi and CNA holder"]];const vnum=v=>+(String(v||"").replace(/\D/g,"")||0);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
 async function api(path,body,method){
@@ -284,18 +284,18 @@ function fillStay(box){
   const meta=()=>api("/api/batch/"+b.id+"/meta",{hotel:q(".hn").value,date:q(".dt").value});
   q(".sv").onclick=async()=>{await meta();await refresh();toast("Saved");tripPage(TRIP(t.id))};
   q(".sret").onclick=async()=>{const hv=q(".hn").value,dv=q(".dt").value;if(hv!==(b.hotelFinal||b.hotelGuess)||dv!==(b.dateFinal||b.dateGuess))await meta();openStays.delete(b.id);await refresh();toast("Saved");tripPage(TRIP(t.id));window.scrollTo(0,0)};
-  const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,HOTEL,0,prog)};
+  const fromInput=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,HOTEL)};
   q(".pick").onclick=()=>q(".files").click();q(".shoot").onclick=()=>q(".cam").click();
   q(".files").onchange=fromInput;q(".cam").onchange=fromInput;
   q(".nreq").onchange=async e=>{const r=await api("/api/batch/"+b.id+"/nona",{required:e.target.checked});if(!r.ok){e.target.checked=!e.target.checked;return toast(r.error||"Could not save. The Pi may need the latest update.")}await refresh();fillStay(box)};
-  q(".npick").onclick=()=>q(".nfiles").click();q(".nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA,0,prog)};
+  q(".npick").onclick=()=>q(".nfiles").click();q(".nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA)};
   const dz=q(".drop");
   ["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over")}));
   ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over")}));
   dz.addEventListener("drop",e=>{
     const fs=[...(e.dataTransfer?e.dataTransfer.files:[])].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|heic|heif|pdf|docx?)$/i.test(f.name));
     if(!fs.length)return toast("Drop photos, PDFs or Word files.");
-    upload(b,fs,HOTEL,0,prog);
+    upload(b,fs,HOTEL);
   });
   box.querySelectorAll("button.thumb").forEach(el=>el.onclick=()=>cropModal(findBatch(id).b.receipts.find(r=>r.id==el.dataset.r)));
 }
@@ -313,33 +313,43 @@ async function shrinkFile(f){
     return blob&&blob.size<f.size?new File([blob],f.name.replace(/\.\w+$/,"")+".jpg",{type:"image/jpeg"}):f;
   }catch(e){return f}   // e.g. HEIC the browser cannot draw: send as is
 }
-async function upload(b,files,tag,pid,pbox){
+function tray(){let t=document.getElementById("utray");if(!t){t=document.createElement("div");t.id="utray";document.body.appendChild(t)}return t}
+async function upload(b,files,tag,pid){
   busy++;
-  const box=pbox||$("#prog");box.innerHTML=files.map((f,i)=>`<div style="margin-top:.6rem"><div class="row sp"><span>${esc(f.name)}</span><span class="mut" id="st${i}">Waiting</span></div><div class="prog"><i id="pb${i}"></i></div></div>`).join("");
+  const T=tray(),draw=(head,rows,foot)=>{T.innerHTML=`<div class="uhead"><b>${head}</b></div>${rows}${foot||""}`;T.hidden=false};
+  const row=(name,msg,pct,cls)=>`<div class="urow ${cls||""}"><div class="row sp"><span class="uname">${esc(name)}</span><span class="mut">${msg}</span></div>${pct==null?"":`<div class="prog"><i style="width:${pct}%"></i></div>`}</div>`;
+  const nf=files.length,plural=nf>1?"s":"";
+  draw(`Uploading ${nf} file${plural}`,files.map(f=>row(f.name,"Waiting",5)).join(""));
+  let tid=0;
   try{
     const fd=new FormData();fd.append("tag",tag);if(pid)fd.append("person_id",pid);const sizes=[];
-    for(let i=0;i<files.length;i++){
-      $("#st"+i).textContent=shrinkOn?"Shrinking…":"Preparing…";$("#pb"+i).style.width="10%";
-      const f=shrinkOn&&/^image\//.test(files[i].type)?await shrinkFile(files[i]):files[i];
-      sizes.push(kb(files[i].size)+(f.size<files[i].size?" to "+kb(f.size):""));fd.append("files",f);$("#pb"+i).style.width="25%";
+    for(let i=0;i<nf;i++){
+      draw(`Preparing ${i+1} of ${nf}`,files.map((f,j)=>row(f.name,j<i?"Ready":j===i?"Preparing…":"Waiting",j<i?25:j===i?10:5)).join(""));
+      const f=/^image\//.test(files[i].type)?await shrinkFile(files[i]):files[i];
+      sizes.push(kb(files[i].size)+(f.size<files[i].size?" to "+kb(f.size):""));fd.append("files",f);
     }
-    files.forEach((_,i)=>$("#st"+i).textContent="Sending…");
+    draw(`Sending ${nf} file${plural} to the Pi`,files.map((f,i)=>row(f.name,"Sending… "+sizes[i],40)).join(""));
     const r=await api("/api/batch/"+b.id+"/upload",fd);
-    if(!r.ok){box.innerHTML=`<div class="err">${esc(r.error||"Upload failed.")}</div>`;return}
-    if(r.errors&&r.errors.length)box.insertAdjacentHTML("afterbegin",r.errors.map(e=>`<div class="err">${esc(e)}</div>`).join(""));
-    // wait for the Pi to read them
-    const ids=r.ids;let done=false,tries=0;
+    if(!r.ok){draw("Upload failed",`<div class="err">${esc(r.error||"Upload failed.")}</div>`,`<button class="btn" id="uok">OK</button>`);$("#uok").onclick=()=>T.hidden=true;return}
+    const errs=(r.errors||[]).map(e=>`<div class="err">${esc(e)}</div>`).join("");
+    const ids=r.ids;let done=!ids.length,tries=0,rs=[];
     while(!done&&tries++<400){
-      await refresh();const rs=findBatch(b.id).b.receipts.filter(x=>ids.includes(x.id));
+      await refresh();const fb=findBatch(b.id);tid=fb.t.id;rs=fb.b.receipts.filter(x=>ids.includes(x.id));
       done=rs.every(x=>x.status!=="processing");
-      ids.forEach((id,i)=>{const x=rs.find(y=>y.id===id);if(!x)return;const el=$("#st"+i);if(!el)return;
-        el.textContent=x.status==="processing"?"Reading…":(x.status==="needs_review"?"Not sure whose":(x.inferred?"Filed (guessed)":"Filed"))+" ("+sizes[i]+")";
-        $("#pb"+i).style.width=x.status==="processing"?"60%":"100%"});
+      draw(done?"Finishing…":"Reading receipts on the Pi…",errs+ids.map((id,i)=>{const x=rs.find(y=>y.id===id);return row("Receipt "+(i+1),!x||x.status==="processing"?"Reading…":"Read",!x||x.status==="processing"?65:100)}).join(""));
       if(!done)await sleep(1500);
     }
-    await sleep(1200);
+    await refresh();const fb=findBatch(b.id);tid=fb.t.id;rs=fb.b.receipts.filter(x=>ids.includes(x.id));
+    let ok=0,bad=0;
+    const rows=ids.map((id,i)=>{const x=rs.find(y=>y.id===id);
+      if(!x)return row("Receipt "+(i+1),"missing",null,"bad");
+      const read=(x.sugg||[])[0];
+      if((x.status==="matched"||x.status==="confirmed")&&x.pid){ok++;return `<div class="urow good"><div class="row sp"><span class="uname">&#10003; ${esc(P(x.pid).name)}</span><span class="mut">${esc(TL(x.tag))}${x.inferred?" &middot; guessed by elimination":""}</span></div>${read?`<div class="mut">Name read: ${esc(read)}</div>`:""}</div>`}
+      bad++;return `<div class="urow bad"><div class="row sp"><span class="uname">? Could not tell whose</span><span class="mut">${esc(TL(x.tag))}</span></div><div class="mut">${read?"Name read: "+esc(read)+". ":""}${esc(x.note||"Check it on the review screen.")}</div></div>`}).join("");
+    draw(bad?`Uploaded: ${ok} filed, ${bad} to check`:`Uploaded: all ${ok} filed`,errs+rows,`<div class="row" style="gap:.5rem;margin-top:.5rem">${bad&&tid?`<a class="btn pri" id="urv" href="#/review/${tid}" style="flex:1;text-align:center">Review the ${bad}</a>`:""}<button class="btn" id="uok" style="flex:1">OK</button></div>`);
+    $("#uok").onclick=()=>T.hidden=true;const rv=$("#urv");if(rv)rv.onclick=()=>T.hidden=true;
   }finally{busy--}
-  await refresh();render();toast("Done");
+  await refresh();render();
 }
 async function delReceipt(r,after){
   if(!confirm("Delete this receipt? The photo and scan are removed from the Pi. This cannot be undone."))return;
