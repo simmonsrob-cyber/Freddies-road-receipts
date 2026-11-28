@@ -94,3 +94,5 @@ a.lnk{color:var(--pri);text-decoration:none;font-weight:600}
 .fold>summary{cursor:pointer;font-weight:700;min-height:36px;display:flex;align-items:center;gap:.4rem}
 .fold.sub{margin:.4rem 0 .2rem 1rem;background:var(--bg)}
 .file{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font:inherit;font-size:.9rem;padding:.5rem .2rem;cursor:pointer}
+header.top h1{text-align:center}
+.catbox{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:56px;margin-top:.6rem;padding:.6rem .9rem;border-radius:.8rem;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;cursor:pointer;text-align:left}
