@@ -34,7 +34,7 @@ def batch_label(b):
 
 
 def live_batches(trip):
-    return [b for b in trip["batches"] if b["receipts"]]
+    return [b for b in trip["batches"] if b["receipts"] and b.get("kind", "hotel") != "extras"]
 
 
 def report(trip, roster):
