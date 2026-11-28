@@ -1,4 +1,4 @@
-# Freddie's Road Receipts (V10)
+# Freddie's Road Receipts (V13)
 
 Phone photos of receipts in, cleaned scans out, filed per person, with a live "who is missing" board and an
 Aircraft Commander Review that emails a small zip. Runs on a Raspberry Pi. No cloud services.
@@ -27,11 +27,8 @@ PUBLIC_BASE_URL), then `sudo systemctl restart receipt-ocr`. The password lives 
 `config.py`: ACCEPT_SCORE (85), TIE_MARGIN (8), ELIMINATION_ENABLED, SINGLE_NAME_PENALTY, STORE_EDGE, JPEG_QUALITY.
 
 ## People
-You never have to set up a crew list. Each receipt's guest name is read and offered as a one-tap suggestion; tapping it adds that person to the mission. The People page is optional (for adding other spellings).
-
-## Adding a person
-People page, then Add person. Put other spellings seen on receipts in the second box (comma separated).
-Confirming a name in "Not sure whose these are" also teaches the app that spelling.
+Only the Crew 4 names (preloaded in `config.py` as PRESET_CREW) are used for now. A receipt that shows a person's full name, or just their first or last name, is filed under them automatically. Anything else goes to "Not sure whose these are", where you pick a crew name. Names that are not on the crew list are never added.
+To allow new names again, set ONLY_CREW = False in `config.py`.
 
 ## Tests
 `pip install pytest && python -m pytest tests/` (needs tesseract installed).
