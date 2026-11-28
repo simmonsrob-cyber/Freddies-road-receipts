@@ -7,8 +7,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-VERSION = "V13"
+VERSION = "V24"
 PORT = int(os.environ.get("PORT", "8081"))
+# Public access: the GitHub page talks to this server, so it needs a passcode and a CORS allow-list.
+ACCESS_CODE = os.environ.get("ACCESS_CODE", "").strip()
+ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("ALLOWED_ORIGINS", "https://simmonsrob-cyber.github.io").split(",") if o.strip()]
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "data"))
 DB_PATH = DATA_DIR / "app.db"
