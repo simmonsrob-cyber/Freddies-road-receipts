@@ -64,7 +64,7 @@ function setHead(title,back){titleEl.textContent=title;backTo=back;backBtn.style
 async function render(){
   const [,page,id]=(location.hash||"#/").split("/");
   const t=TRIP(id);
-  const pages={"":home,roster:rosterPage,newtrip:()=>newTrip(),trip:()=>t?tripPage(t):home(),batch:()=>batchPage(id),review:()=>t?reviewPage(t):home(),ac:()=>t?acPage(t):home()};
+  const pages={"":home,dev:devPage,roster:rosterPage,newtrip:()=>newTrip(),trip:()=>t?tripPage(t):home(),batch:()=>batchPage(id),review:()=>t?reviewPage(t):home(),ac:()=>t?acPage(t):home()};
   (pages[page||""]||home)();
 }
 async function nav(){await refresh();if(needLogin){loginScreen(CODE?"That passcode did not work. Try again.":"");return}await render();window.scrollTo(0,0)}
@@ -90,7 +90,7 @@ function mcard(t){
 }
 function home(){
   setHead("Freddie's Road Receipts",null);
-  const open=S.trips.filter(t=>t.status!=="sent"),done=S.trips.filter(t=>t.status==="sent");
+  const live0=S.trips.filter(t=>!t.archived),open=live0.filter(t=>t.status!=="sent"),done=live0.filter(t=>t.status==="sent");
   app.innerHTML=`<div class="hero"><svg viewBox="0 0 370 130" class="c5" role="img" aria-label="Cartoon C-5 Galaxy"><g stroke="#1b2733" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
 <path d="M14 6h60M30 118h40" stroke="#bcd3ee" stroke-dasharray="2 9"/>
 <path d="M300 44L314 10h26l-6 36z" fill="#8f9eb0"/><rect x="298" y="3" width="58" height="11" rx="5" fill="#a9b6c6"/>
@@ -165,6 +165,27 @@ function stayCard(t,b){
   <div class="pchips">${people||'<span class="mut">No crew list on this mission.</span>'}</div>
   <div class="row" style="gap:.5rem"><a class="btn sm pri" href="#/batch/${b.id}">${empty?"Add receipts":"Open this stay"}</a>${empty?`<button class="btn sm danger" data-delstay="${b.id}">Remove</button>`:""}</div></details>${nsub}</div>`;
 }
+function devFiles(t){
+  const bs=t.batches.filter(b=>b.receipts.length);
+  if(!bs.length)return '<div class="mut" style="margin-left:1rem">No files yet.</div>';
+  return bs.map(b=>`<details class="fold sub"><summary>&#128193; ${esc(b.kind==="extras"?"Other receipts":(hotel(b)+(dateTxt(b)?" ("+dateTxt(b)+")":"")))} <span class="mut">${b.receipts.length}</span></summary>${b.receipts.map(r=>`<button class="file" data-vr="${r.id}">&#128196; ${esc(fname(t,r))}${r.status==="needs_review"?' <span class="pill warn">review</span>':""}</button>`).join("")}</details>`).join("");
+}
+function devPage(){
+  setHead("Dev tools","#/");
+  const act=S.trips.filter(t=>!t.archived),arc=S.trips.filter(t=>t.archived);
+  const all=[...S.trips];const findR=id=>{for(const t of all)for(const b of t.batches){const r=b.receipts.find(x=>x.id==id);if(r)return r}};
+  app.innerHTML=`<div class="card"><b>Dev tools</b> <span class="mut">page V23 &middot; server ${esc(S.version||"?")}</span></div>
+  <details class="fold" open><summary>&#128193; Missions <span class="mut">${act.length}</span></summary>${act.map(t=>`<details class="fold sub"><summary>&#128193; ${esc(t.name)}</summary>${devFiles(t)}</details>`).join("")||'<div class="mut" style="margin-left:1rem">None.</div>'}</details>
+  <details class="fold"><summary>&#128274; Archived <span class="mut">${arc.length}</span></summary>${arc.map(t=>`<div class="card"><div><b>${esc(t.name)}</b></div><div class="mut">Removed ${esc((t.archivedAt||"").slice(0,10))}</div><details class="fold sub"><summary>&#128193; Files</summary>${devFiles(t)}</details><div class="row" style="gap:.5rem;margin-top:.5rem"><button class="btn sm pri" data-restore="${t.id}">Restore</button><button class="btn sm danger" data-purge="${t.id}">Erase forever</button></div></div>`).join("")||'<div class="mut" style="margin-left:1rem">Nothing archived.</div>'}</details>
+  <details class="fold"><summary>&#9881; System</summary><div class="card"><div class="mut">Pi address: ${esc(API||location.origin)}</div><div class="mut">Server version: ${esc(S.version||"?")}</div><button class="btn sm" id="signout">Forget the passcode on this phone</button></div></details>`;
+  app.querySelectorAll("[data-vr]").forEach(bt=>bt.onclick=()=>viewer(findR(bt.dataset.vr)));
+  app.querySelectorAll("[data-restore]").forEach(bt=>bt.onclick=async()=>{const r=await api("/api/trip/"+bt.dataset.restore+"/restore",{});if(!r.ok)return toast(r.error||"Could not restore.");toast("Mission restored");await refresh();devPage()});
+  app.querySelectorAll("[data-purge]").forEach(bt=>bt.onclick=async()=>{const t=TRIP(bt.dataset.purge);
+    if(!confirm('Erase "'+t.name+'" for good? Every photo, scan and zip is removed from the Pi. This cannot be undone.'))return;
+    if(!confirm("Last chance. Erase it forever?"))return;
+    const r=await api("/api/trip/"+t.id+"/purge",{});if(!r.ok)return toast(r.error||"Could not erase.");toast("Erased");await refresh();devPage()});
+  $("#signout").onclick=()=>{try{localStorage.removeItem("frr-code")}catch(e){}CODE="";nav()};
+}
 function stayModal(t){
   const L=$("#layer");
   L.innerHTML=`<div class="modal"><div class="sheet"><h2>Add hotel</h2><input type="text" id="hn1" placeholder="Hotel name" autocomplete="off"><div style="height:.5rem"></div><label class="mut">Date<br><input type="date" id="hd1" value="${todayStr()}" style="width:100%"></label><button class="btn pri" id="sgo">Save and upload receipts</button><button class="btn" id="ssv">Save hotel only (upload later)</button><button class="btn" id="scl">Cancel</button></div></div>`;
@@ -198,15 +219,14 @@ function tripPage(t){
   ${grid}
   <details class="card"><summary><b>Mission dates</b></summary><div class="row" style="gap:.6rem;flex-wrap:wrap;align-items:end;margin-top:.5rem"><label class="mut" style="flex:1;min-width:8rem">Start date<br><input type="date" id="sd" value="${esc(t.startDate||"")}" style="width:100%"></label><label class="mut" style="flex:1;min-width:8rem">End date<br><input type="date" id="ed" value="${esc(t.endDate||"")}" style="width:100%"></label></div></details>
   ${t.status==="sent"?'<button class="btn" id="reopen">Reopen mission</button>':""}
-  <div style="height:1rem"></div><button class="btn danger" id="delmission">Delete this mission</button>`;
+  <div style="height:1rem"></div><button class="btn danger" id="delmission">Remove this mission</button>`;
   const saveDates=async()=>{const r=await api("/api/trip/"+t.id+"/dates",{startDate:$("#sd").value,endDate:$("#ed").value});if(!r.ok){toast(r.error||"Could not save dates.");return}await refresh();toast("Dates saved")};
   $("#sd").onchange=saveDates;$("#ed").onchange=saveDates;
   $("#delmission").onclick=async()=>{
     const n=t.batches.reduce((a,b)=>a+b.receipts.length,0);
-    if(!confirm('Delete the mission "'+t.name+'" and all '+n+' receipt'+(n===1?"":"s")+' in it? The photos, scans and zips are removed from the Pi.'))return;
-    if(!confirm('Are you REALLY sure? "'+t.name+'" will be gone for good. This cannot be undone.'))return;
-    const r=await api("/api/trip/"+t.id+"/delete",{});if(!r.ok)return toast(r.error||"Could not delete.");
-    toast("Mission deleted");await refresh();go("#/");
+    if(!confirm('Remove "'+t.name+'" from the main page? Its '+n+' receipt'+(n===1?"":"s")+' are kept and it moves to Archived in Dev tools (tap the version number at the top).'))return;
+    const r=await api("/api/trip/"+t.id+"/delete",{});if(!r.ok)return toast(r.error||"Could not remove.");
+    toast("Mission archived");await refresh();go("#/");
   };
   $("#nb").onclick=()=>stayModal(t);
   app.querySelectorAll("[data-nreq]").forEach(cb=>cb.onchange=async()=>{const r=await api("/api/batch/"+cb.dataset.nreq+"/nona",{required:cb.checked});if(!r.ok)toast(r.error||"Could not save.");await refresh();tripPage(TRIP(t.id))});
@@ -234,10 +254,12 @@ function batchPage(id){
    <div class="step"><b>Add receipts</b></div><div class="dd mut">On a computer you can also drag photos onto this box.</div>
    <input type="file" id="files" accept="image/*" multiple hidden><input type="file" id="cam" accept="image/*" capture="environment" hidden>
    <button class="btn pri" id="pick">Add receipts with photo library</button><button class="btn" id="shoot">Take photo</button>
-   <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" accept="image/*" multiple hidden>
    <div class="mut" style="margin:.4rem 0">Files are named: last name, today's date, then Hotel.</div>
    <label class="row" style="justify-content:center;gap:.6rem;min-height:44px"><input type="checkbox" id="shr" ${shrinkOn?"checked":""}> <span class="mut">Shrink big photos before sending (faster, saves data)</span></label>
    <div id="prog"></div></div>
+  <div class="card"><h2>Non Availability</h2><label class="chk" style="min-height:40px"><input type="checkbox" id="nreq" ${b.nonaRequired?"checked":""}> <span>Required for this stay (everyone needs one)</span></label>
+   ${b.nonaRequired?(()=>{const nh=new Set(b.receipts.filter(r=>(r.status==="matched"||r.status==="confirmed")&&r.pid&&r.tag===NONA).map(r=>r.pid));return `<div class="pchips">${t.members.map(i=>`<span class="pchip ${nh.has(i)?"y":"n"}">${nh.has(i)?"&#10003;":"&#10007;"} ${esc(last(P(i)))}</span>`).join("")}</div>`})():""}
+   <button class="btn" id="npick">Add Non Availability receipts</button><input type="file" id="nfiles" accept="image/*" multiple hidden></div>
   <div class="card"><h2>Hotel and date</h2><div class="mut">${b.hotelGuess?"Our guess, tap to fix:":"Filled in after the first hotel receipt is read."}</div>
    <input type="text" id="hn" value="${esc(b.hotelFinal||b.hotelGuess)}" placeholder="Hotel name"><div style="height:.5rem"></div><input type="date" id="dt" value="${esc(b.dateFinal||b.dateGuess)}">
    <button class="btn" id="sv">Save</button></div>
@@ -249,6 +271,7 @@ function batchPage(id){
   $("#pick").onclick=()=>needTag()&&$("#files").click();
   $("#shoot").onclick=()=>needTag()&&$("#cam").click();
   $("#files").onchange=fromInput;$("#cam").onchange=fromInput;
+  $("#nreq").onchange=async e=>{const r=await api("/api/batch/"+b.id+"/nona",{required:e.target.checked});if(!r.ok)toast(r.error||"Could not save.");await refresh();batchPage(id)};
   $("#npick").onclick=()=>$("#nfiles").click();$("#nfiles").onchange=e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)upload(b,fs,NONA)};
   // drag and drop (computers)
   const dz=$(".drop");
@@ -379,4 +402,5 @@ function cropModal(r){
   $("#mv").onclick=async()=>{const v=$("#mvn").value.trim();if(!v)return toast("Type a name first");const res=await api("/api/receipt/"+r.id+"/confirm",{name:v});if(!res.ok)return toast(res.error);L.innerHTML="";toast("Saved");await refresh();render()};
   $("#ap").onclick=async()=>{const res=await api("/api/receipt/"+r.id+"/crop",{points:pts});L.innerHTML="";toast(res.ok?"Re-scanning…":res.error);await refresh();render()};
 }
+{const v=document.getElementById("ver");if(v){const o=()=>go("#/dev");v.onclick=o;v.onkeydown=e=>{if(e.key==="Enter")o()}}}
 nav();
