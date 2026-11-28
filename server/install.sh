@@ -25,7 +25,7 @@ say "   Port $PORT is OK."
 
 step "2 of 5. Programs"
 $SUDO apt-get update -qq || warn "apt update did not finish. Is the Pi online?"
-$SUDO apt-get install -y -qq python3-venv python3-pip tesseract-ocr tesseract-ocr-eng fonts-dejavu-core || warn "some programs did not install"
+$SUDO apt-get install -y -qq python3-venv python3-pip tesseract-ocr tesseract-ocr-eng poppler-utils fonts-dejavu-core || warn "some programs did not install"
 
 step "3 of 5. Copying the app to $APP"
 mkdir -p "$APP"
@@ -42,7 +42,7 @@ if [ -d "$APP/data" ] && [ -n "$(ls -A "$APP/data" 2>/dev/null)" ] && [ -z "$(ls
 fi
 if [ ! -f "$APP/.env" ]; then cp "$APP/.env.example" "$APP/.env"; say "   Created $APP/.env (edit it later for email)."; fi
 grep -q '^DATA_DIR=' "$APP/.env" || printf '\nDATA_DIR=%s\n' "$DATA" >> "$APP/.env"
-# V24: passcode for the public GitHub page, a safe origin list, and the new public address
+# V25: PDF and Word uploads (poppler-utils). V24: passcode for the public GitHub page, a safe origin list, and the new public address
 if ! grep -q '^ACCESS_CODE=.\+' "$APP/.env"; then
   CODE="$(python3 -c 'import secrets;print(secrets.token_urlsafe(9))')"
   sed -i '/^ACCESS_CODE=/d' "$APP/.env"; printf 'ACCESS_CODE=%s\n' "$CODE" >> "$APP/.env"; NEWCODE="$CODE"
