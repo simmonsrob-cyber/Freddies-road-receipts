@@ -226,9 +226,97 @@ def test_delete_mission_and_person(client, tmp_path):
     assert pa not in t["members"] and len(t["batches"][0]["receipts"]) == 2
     assert sum(r["status"] == "needs_review" for r in t["batches"][0]["receipts"]) == 1
     assert client.post(f"/api/person/{pa}/delete", json={}).status_code == 404
-    # delete the mission: rows and the whole folder are gone, the other mission stays
+    # "delete" archives: still there (flagged), files kept; restore brings it back; purge erases it for real
     assert client.post(f"/api/trip/{tid}/delete", json={}).get_json()["ok"]
+    s = st(client)
+    assert next(x for x in s["trips"] if x["id"] == tid)["archived"] is True and folder.exists()
+    assert client.post(f"/api/trip/{tid}/restore", json={}).get_json()["ok"]
+    assert next(x for x in st(client)["trips"] if x["id"] == tid)["archived"] is False
+    assert client.post(f"/api/trip/{tid}/purge", json={}).status_code == 400      # not archived: refused
+    client.post(f"/api/trip/{tid}/delete", json={})
+    assert client.post(f"/api/trip/{tid}/purge", json={}).get_json()["ok"]
     s = st(client)
     assert tid not in [x["id"] for x in s["trips"]] and keep in [x["id"] for x in s["trips"]]
     assert not folder.exists()
     assert client.post(f"/api/trip/{tid}/delete", json={}).status_code == 404
+    assert client.post(f"/api/trip/{tid}/purge", json={}).status_code == 404
+
+
+def test_mission_dates(client):
+    tid = client.post("/api/trip", json={"name": "Dated", "members": []}).get_json()["id"]
+    g = lambda: next(t for t in st(client)["trips"] if t["id"] == tid)
+    assert g()["startDate"] == "" and g()["endDate"] == ""
+    assert client.post(f"/api/trip/{tid}/dates", json={"startDate": "2026-03-01", "endDate": "2026-03-09"}).get_json()["ok"]
+    assert g()["startDate"] == "2026-03-01" and g()["endDate"] == "2026-03-09"
+    assert not client.post(f"/api/trip/{tid}/dates", json={"startDate": "2026-03-09", "endDate": "2026-03-01"}).get_json()["ok"]
+    assert not client.post(f"/api/trip/{tid}/dates", json={"startDate": "March 1"}).get_json()["ok"]
+    assert client.post(f"/api/trip/{tid}/dates", json={"startDate": "2026-03-01"}).get_json()["ok"]   # end date is optional
+    assert g()["endDate"] == ""
+    assert client.post("/api/trip/99999/dates", json={}).status_code == 404
+
+
+def test_shell_stays(client, tmp_path):
+    tid = client.post("/api/trip", json={"name": "Shell", "members": []}).get_json()["id"]
+    b1 = client.post(f"/api/trip/{tid}/batch", json={}).get_json()["id"]
+    b2 = client.post(f"/api/trip/{tid}/batch", json={}).get_json()["id"]
+    assert client.post(f"/api/batch/{b1}/meta", json={"hotel": "Hilton Garden", "date": "2026-04-02"}).get_json()["ok"]
+    g = lambda: next(t for t in st(client)["trips"] if t["id"] == tid)
+    s1 = next(b for b in g()["batches"] if b["id"] == b1)
+    assert s1["hotelFinal"] == "Hilton Garden" and s1["dateFinal"] == "2026-04-02" and s1["receipts"] == []
+    post_files(client, b1, [jpg(tmp_path, "SMITH, JOHN")])
+    drain()
+    r = client.post(f"/api/batch/{b1}/delete", json={})
+    assert r.status_code == 400 and not r.get_json()["ok"]          # has a receipt: refused
+    assert client.post(f"/api/batch/{b2}/delete", json={}).get_json()["ok"]   # empty: removed
+    assert [b["id"] for b in g()["batches"]] == [b1]
+    assert client.post(f"/api/batch/{b2}/delete", json={}).status_code == 404
+
+
+def test_extras_holder(client, tmp_path):
+    tid = client.post("/api/trip", json={"name": "Extras", "members": []}).get_json()["id"]
+    e1 = client.post(f"/api/trip/{tid}/extras", json={}).get_json()["id"]
+    assert client.post(f"/api/trip/{tid}/extras", json={}).get_json()["id"] == e1     # one per mission
+    post_files(client, e1, [jpg(tmp_path, "BROWN, TOM")], tag="Taxi")
+    drain()
+    t = next(t for t in st(client)["trips"] if t["id"] == tid)
+    assert next(b for b in t["batches"] if b["id"] == e1)["kind"] == "extras"
+    import reports
+    assert reports.live_batches(t) == []             # never counted as a hotel stay
+    assert client.post("/api/trip/99999/extras", json={}).status_code == 404
+
+
+def test_nona_required_flag(client):
+    tid = client.post("/api/trip", json={"name": "NonA", "members": []}).get_json()["id"]
+    b = client.post(f"/api/trip/{tid}/batch", json={}).get_json()["id"]
+    g = lambda: next(x for x in next(t for t in st(client)["trips"] if t["id"] == tid)["batches"] if x["id"] == b)
+    assert g()["nonaRequired"] is False
+    assert client.post(f"/api/batch/{b}/nona", json={"required": True}).get_json()["ok"]
+    assert g()["nonaRequired"] is True
+    assert client.post(f"/api/batch/{b}/nona", json={"required": False}).get_json()["ok"]
+    assert g()["nonaRequired"] is False
+    assert client.post("/api/batch/99999/nona", json={}).status_code == 404
+
+
+def test_passcode_and_cors(monkeypatch):
+    a = appmod.create_app(start=False)
+    c = a.test_client()
+    monkeypatch.setattr(config, "ACCESS_CODE", "s3cret-code")
+    monkeypatch.setattr(config, "ALLOWED_ORIGINS", ["https://simmonsrob-cyber.github.io"])
+    assert c.get("/health").status_code == 200                              # no data: open
+    assert c.get("/").status_code == 200                                    # page shell: open
+    r = c.get("/api/state")
+    assert r.status_code == 401 and r.get_json()["auth"] is True            # data: locked
+    assert c.post("/api/person", json={"name": "Hacker One"}).status_code == 401
+    assert c.get("/api/state", headers={"X-Code": "wrong"}).status_code == 401
+    assert c.get("/api/state", headers={"X-Code": "s3cret-code"}).status_code == 200
+    assert c.get("/api/state?k=s3cret-code").status_code == 200             # images use ?k=
+    assert c.get("/img/1").status_code == 401
+    assert c.get("/download/notarealtoken.zip").status_code == 404          # token guarded, not passcode guarded
+    o = {"Origin": "https://simmonsrob-cyber.github.io"}
+    pre = c.options("/api/trip", headers={**o, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-code,content-type"})
+    assert pre.status_code == 204 and pre.headers["Access-Control-Allow-Origin"] == o["Origin"]
+    assert "X-Code" in pre.headers["Access-Control-Allow-Headers"]
+    ok = c.get("/api/state", headers={**o, "X-Code": "s3cret-code"})
+    assert ok.headers["Access-Control-Allow-Origin"] == o["Origin"]
+    bad = c.get("/api/state", headers={"Origin": "https://evil.example", "X-Code": "s3cret-code"})
+    assert "Access-Control-Allow-Origin" not in bad.headers                 # other sites get no CORS permission
