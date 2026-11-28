@@ -105,3 +105,4 @@ header.top h1{text-align:center}
 #pop{position:fixed;z-index:70;display:flex;gap:1rem;max-width:calc(100vw - 16px);background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:.8rem;padding:.6rem .8rem;font-size:.85rem;box-shadow:0 8px 28px rgba(0,0,0,.4)}#pop[hidden]{display:none}#pop .pcol b{display:block;margin-bottom:.2rem}#pop .miss b{color:var(--bad)}#pop .have b{color:var(--ok)}
 .pchip.tap{cursor:pointer}
 .nabtn{margin:0 .4rem;white-space:nowrap}
+.edbtn{background:none;border:0;color:var(--mut,#9aa);font-size:1rem;padding:.2rem .35rem;cursor:pointer;border-radius:.4rem;vertical-align:middle}.edbtn:hover{background:rgba(255,255,255,.1)}
